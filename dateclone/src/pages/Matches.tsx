@@ -1,0 +1,163 @@
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import AppNavbar from "../component/AppNavbar";
+import { matchAPI } from "../services/apiService";
+import "../style/matches.css";
+
+interface MatchUser {
+    _id: string;
+    firstName: string;
+    lastName: string;
+    profilePicture?: string;
+    age?: number;
+    city?: string;
+    country?: string;
+    occupation?: string;
+}
+interface MatchItem {
+    _id: string;
+    user: MatchUser;
+    matchedAt: string;
+    lastMessageAt?: string;
+    messagesSent?: number;
+}
+
+const Matches = () => {
+    const navigate = useNavigate();
+    const [matches, setMatches] = useState<MatchItem[]>([]);
+    const [likes, setLikes] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [tab, setTab] = useState<"matches" | "likes">("matches");
+
+    useEffect(() => {
+        const load = async () => {
+            setLoading(true);
+            try {
+                const [matchRes, likeRes] = await Promise.all([
+                    matchAPI.getMatches(),
+                    matchAPI.getLikesReceived(),
+                ]);
+                setMatches(matchRes.matches || []);
+                setLikes(likeRes.likes || []);
+            } catch {
+                /* silent */
+            } finally {
+                setLoading(false);
+            }
+        };
+        load();
+    }, []);
+
+    const initials = (u: MatchUser) =>
+        `${u.firstName?.[0] ?? ""}${u.lastName?.[0] ?? ""}`.toUpperCase();
+
+    return (
+        <div className="page-wrapper">
+            <AppNavbar />
+            <div className="matches-page">
+                <div className="matches-header">
+                    <h1>Your Matches</h1>
+                    <p>People who liked you back ❤️</p>
+                </div>
+
+                {/* Tabs */}
+                <div className="matches-tabs">
+                    <button
+                        className={`matches-tab ${tab === "matches" ? "active" : ""}`}
+                        onClick={() => setTab("matches")}
+                    >
+                        Matches <span className="tab-count">{matches.length}</span>
+                    </button>
+                    <button
+                        className={`matches-tab ${tab === "likes" ? "active" : ""}`}
+                        onClick={() => setTab("likes")}
+                    >
+                        Likes Received <span className="tab-count">{likes.length}</span>
+                    </button>
+                </div>
+
+                {loading ? (
+                    <div className="matches-loading">
+                        <div className="discover-spinner" />
+                    </div>
+                ) : tab === "matches" ? (
+                    matches.length === 0 ? (
+                        <div className="empty-state">
+                            <div className="empty-icon">💞</div>
+                            <h3>No matches yet</h3>
+                            <p>Keep swiping to find your match!</p>
+                            <button className="btn btn-primary" onClick={() => navigate("/discover")} style={{ marginTop: 16 }}>
+                                Start Swiping
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="matches-grid">
+                            {matches.map((m) => (
+                                <div key={m._id} className="match-card" onClick={() => navigate(`/chat/${m.user._id}`)}>
+                                    <div className="match-card-photo">
+                                        {m.user.profilePicture ? (
+                                            <img src={m.user.profilePicture} alt={m.user.firstName} />
+                                        ) : (
+                                            <div className="match-card-placeholder">{initials(m.user)}</div>
+                                        )}
+                                        <div className="match-card-badge">💞</div>
+                                    </div>
+                                    <div className="match-card-info">
+                                        <h3>{m.user.firstName}, {m.user.age ?? "?"}</h3>
+                                        <p className="match-card-location">
+                                            {m.user.city ?? ""}{m.user.city && m.user.country ? ", " : ""}{m.user.country ?? ""}
+                                        </p>
+                                        {m.user.occupation && <p className="match-card-occupation">{m.user.occupation}</p>}
+                                    </div>
+                                    <div className="match-card-actions">
+                                        <button className="match-action-btn msg" onClick={(e) => { e.stopPropagation(); navigate(`/chat/${m.user._id}`); }}>
+                                            💬 Chat
+                                        </button>
+                                        <button className="match-action-btn view" onClick={(e) => { e.stopPropagation(); navigate(`/profile/${m.user._id}`); }}>
+                                            👤 Profile
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )
+                ) : (
+                    likes.length === 0 ? (
+                        <div className="empty-state">
+                            <div className="empty-icon">💝</div>
+                            <h3>No likes yet</h3>
+                            <p>Upgrade to Premium to see who likes you!</p>
+                            <button className="btn btn-primary" onClick={() => navigate("/premium")} style={{ marginTop: 16 }}>
+                                ✨ Go Premium
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="matches-grid">
+                            {likes.map((l) => (
+                                <div key={l._id} className="match-card likes-card">
+                                    <div className="match-card-photo blurred">
+                                        {l.from?.profilePicture ? (
+                                            <img src={l.from.profilePicture} alt="?" className="blurred-img" />
+                                        ) : (
+                                            <div className="match-card-placeholder">?</div>
+                                        )}
+                                        <div className="match-blur-overlay">
+                                            <span>❤️</span>
+                                            <p>Unlock to see</p>
+                                        </div>
+                                    </div>
+                                    <div className="match-card-info">
+                                        <h3>Someone likes you!</h3>
+                                        <p className="match-card-location">Upgrade to reveal</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default Matches;

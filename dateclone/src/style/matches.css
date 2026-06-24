@@ -1,0 +1,234 @@
+/* ── Matches Page ──────────────────────────────────────────────────────────── */
+.matches-page {
+    flex: 1;
+    padding: 24px;
+    max-width: 900px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.matches-header {
+    margin-bottom: 24px;
+}
+
+.matches-header h1 {
+    font-size: 1.8rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #ff1744, #ff4081);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.matches-header p {
+    color: #888;
+    font-size: 0.95rem;
+    margin-top: 4px;
+}
+
+/* Tabs */
+.matches-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    border-bottom: 2px solid #f0f0f0;
+    padding-bottom: 0;
+}
+
+.matches-tab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border: none;
+    background: none;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #999;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.2s;
+}
+
+.matches-tab.active {
+    color: #ff1744;
+    border-bottom-color: #ff1744;
+}
+
+.tab-count {
+    background: rgba(255, 23, 68, 0.1);
+    color: #ff1744;
+    border-radius: 20px;
+    padding: 1px 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.matches-loading {
+    display: flex;
+    justify-content: center;
+    padding: 60px;
+}
+
+/* Grid */
+.matches-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 20px;
+}
+
+/* Card */
+.match-card {
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.07);
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.25s, box-shadow 0.25s;
+    border: 1px solid #f5f5f5;
+}
+
+.match-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 16px 40px rgba(255, 23, 68, 0.12);
+}
+
+.match-card-photo {
+    position: relative;
+    height: 200px;
+    background: linear-gradient(135deg, #fce4ec, #f8bbd0);
+    overflow: hidden;
+}
+
+.match-card-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.match-card-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3rem;
+    font-weight: 800;
+    color: white;
+    background: linear-gradient(135deg, #ff1744, #ff4081);
+}
+
+.match-card-badge {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background: white;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    font-size: 1rem;
+}
+
+.match-card-info {
+    padding: 12px 14px 8px;
+}
+
+.match-card-info h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #222;
+    margin-bottom: 3px;
+}
+
+.match-card-location {
+    font-size: 0.8rem;
+    color: #999;
+}
+
+.match-card-occupation {
+    font-size: 0.8rem;
+    color: #666;
+    margin-top: 2px;
+}
+
+.match-card-actions {
+    display: flex;
+    gap: 8px;
+    padding: 8px 14px 14px;
+}
+
+.match-action-btn {
+    flex: 1;
+    padding: 8px;
+    border-radius: 8px;
+    border: none;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.match-action-btn.msg {
+    background: linear-gradient(135deg, #ff1744, #ff4081);
+    color: white;
+}
+
+.match-action-btn.msg:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+.match-action-btn.view {
+    background: #f5f5f5;
+    color: #555;
+}
+
+.match-action-btn.view:hover {
+    background: #eee;
+}
+
+/* Blurred likes */
+.blurred-img {
+    filter: blur(10px);
+    transform: scale(1.05);
+}
+
+.match-blur-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.25);
+    color: white;
+    font-size: 0.85rem;
+    font-weight: 600;
+    gap: 4px;
+}
+
+.match-blur-overlay span {
+    font-size: 2rem;
+}
+
+@media (max-width: 600px) {
+    .matches-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+
+    .match-card-photo {
+        height: 160px;
+    }
+}
+
+@media (max-width: 400px) {
+    .matches-grid {
+        grid-template-columns: 1fr;
+    }
+}

@@ -3,160 +3,108 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { User } from "../models/User.js";
 import { authenticateToken, generateToken } from "../middleware/auth.js";
-import {
-    sendVerificationEmail,
-    sendWelcomeEmail,
-} from "../services/emailService.js";
+import { sendVerificationEmail, sendWelcomeEmail } from "../services/emailService.js";
+import { onboardMember } from "../services/onboardingService.js";
 import { body, validationResult } from "express-validator";
 
 const router = express.Router();
 
-// POST: Register User
+// ── Safe public user projection (never expose password / OTP) ─────────────────
+const PUBLIC_FIELDS = "-password -verificationToken -verificationTokenExpires";
+
+// ── POST /register ────────────────────────────────────────────────────────────
 router.post(
     "/register",
     [
         body("email").isEmail().normalizeEmail(),
         body("password").isLength({ min: 8 }),
-        body("username").isLength({ min: 3 }),
+        body("username").isLength({ min: 3 }).trim(),
     ],
     async (req, res) => {
         try {
-            const errors = validationResult(req);
-            if (!errors.isEmpty()) {
-                return res.status(400).json({ success: false, errors: errors.array() });
+            const validationErrors = validationResult(req);
+            if (!validationErrors.isEmpty()) {
+                return res.status(400).json({ success: false, errors: validationErrors.array() });
             }
 
             const {
-                firstName,
-                lastName,
-                username,
-                email,
-                phone,
-                password,
-                confirmPassword,
-                dateOfBirth,
-                gender,
-                lookingFor,
-                country,
-                state,
-                city,
-                profilePicture,
-                aboutMe,
-                occupation,
-                education,
-                languages,
-                interests,
-                minAge,
-                maxAge,
-                preferredCountry,
-                preferredDistance,
-                relationshipGoal,
-                hasChildren,
-                wantsChildren,
-                smoking,
-                drinking,
-                religion,
-                religionImportance,
-                relationshipValue,
-                latitude,
-                longitude,
+                firstName, lastName, username, email, phone,
+                password, confirmPassword,
+                dateOfBirth, gender, lookingFor,
+                country, state, city, latitude, longitude,
+                profilePicture, aboutMe, occupation, education, languages,
+                interests, smoking, drinking,
+                minAge, maxAge, preferredCountry, preferredDistance,
+                relationshipGoal, hasChildren, wantsChildren,
+                religion, religionImportance, relationshipValue,
             } = req.body;
 
-            // Validate required fields
+            // Required field check
             if (!firstName || !lastName || !username || !email || !password) {
-                return res
-                    .status(400)
-                    .json({
-                        success: false,
-                        message: "Please provide all required fields",
-                    });
+                return res.status(400).json({ success: false, message: "Please provide all required fields" });
             }
-
-            // Validate password confirmation
             if (password !== confirmPassword) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Passwords do not match",
-                });
+                return res.status(400).json({ success: false, message: "Passwords do not match" });
             }
 
-            // Check if user already exists
-            const existingUser = await User.findOne({
-                $or: [{ email }, { username }],
-            });
-
-            if (existingUser) {
+            // Duplicate check
+            const existing = await User.findOne({ $or: [{ email }, { username: username.toLowerCase() }] });
+            if (existing) {
                 return res.status(409).json({
                     success: false,
-                    message:
-                        existingUser.email === email
-                            ? "Email already registered"
-                            : "Username already taken",
+                    message: existing.email === email ? "Email already registered" : "Username already taken",
                 });
             }
 
             // Hash password
-            const salt = await bcrypt.genSalt(10);
-            const hashedPassword = await bcrypt.hash(password, salt);
+            const hashedPassword = await bcrypt.hash(password, 12);
 
-            // Generate verification token
-            const verificationToken = crypto.randomBytes(32).toString("hex");
-            const verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+            // 6-digit OTP (10 minutes)
+            const verificationToken = Math.floor(100000 + Math.random() * 900000).toString();
+            const verificationTokenExpires = new Date(Date.now() + 10 * 60 * 1000);
 
-            // Calculate age
-            const age = new Date().getFullYear() - new Date(dateOfBirth).getFullYear();
+            // Age from DOB
+            const age = dateOfBirth
+                ? new Date().getFullYear() - new Date(dateOfBirth).getFullYear()
+                : undefined;
 
-            // Create new user
             const newUser = new User({
-                firstName,
-                lastName,
-                username,
-                email,
-                phone,
+                firstName, lastName,
+                username: username.toLowerCase(),
+                email, phone,
                 password: hashedPassword,
-                dateOfBirth,
-                age,
-                gender,
-                lookingFor,
-                country,
-                state,
-                city,
-                profilePicture,
-                aboutMe,
-                occupation,
-                education,
+                dateOfBirth, age,
+                gender, lookingFor,
+                country, state, city, latitude, longitude,
+                profilePicture, aboutMe, occupation, education,
                 languages: languages || [],
                 interests: interests || [],
+                smoking, drinking,
                 minAge: minAge || 18,
-                maxAge: maxAge || 80,
-                preferredCountry,
-                preferredDistance,
-                relationshipGoal,
-                hasChildren,
-                wantsChildren,
-                smoking,
-                drinking,
-                religion,
-                religionImportance,
-                relationshipValue,
-                latitude,
-                longitude,
+                maxAge: maxAge || 50,
+                preferredCountry, preferredDistance,
+                relationshipGoal, hasChildren, wantsChildren,
+                religion, religionImportance, relationshipValue,
                 verificationToken,
                 verificationTokenExpires,
-                profileCompletion: 100,
+                // Not yet a member — activated on email verification
+                isMember: false,
+                isActive: false,
+                onboardingComplete: false,
             });
 
             await newUser.save();
 
-            // Send verification email
-            await sendVerificationEmail(email, verificationToken);
+            // Send OTP email (fire-and-forget — don't block response)
+            sendVerificationEmail(email, verificationToken).catch((e) =>
+                console.error("[Register] Email send failed:", e.message)
+            );
 
-            // Generate JWT token
             const token = generateToken(newUser._id);
 
-            res.status(201).json({
+            return res.status(201).json({
                 success: true,
-                message: "Registration successful. Please verify your email.",
+                message: "Registration successful. Please verify your email to activate your account.",
                 token,
                 user: {
                     _id: newUser._id,
@@ -165,170 +113,143 @@ router.post(
                     email: newUser.email,
                     username: newUser.username,
                     profilePicture: newUser.profilePicture,
+                    isMember: false,
+                    emailVerified: false,
                 },
             });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({
-                success: false,
-                message: error.message || "Registration failed",
-            });
+            console.error("[Register]", error);
+            res.status(500).json({ success: false, message: error.message || "Registration failed" });
         }
     }
 );
 
-// POST: Verify Email
-router.post("/verify-email", async (req, res) => {
+// ── POST /verify-otp ──────────────────────────────────────────────────────────
+router.post("/verify-otp", async (req, res) => {
     try {
-        const { token } = req.body;
+        const { email, otp } = req.body;
 
-        if (!token) {
-            return res.status(400).json({
-                success: false,
-                message: "Verification token is required",
-            });
+        if (!email || !otp) {
+            return res.status(400).json({ success: false, message: "Email and OTP code are required" });
         }
 
         const user = await User.findOne({
-            verificationToken: token,
+            email,
+            verificationToken: otp.toString().trim(),
             verificationTokenExpires: { $gt: Date.now() },
         });
 
         if (!user) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid or expired verification token",
+                message: "Invalid or expired code. Request a new one.",
             });
         }
 
-        // Mark user as verified
-        user.emailVerified = true;
-        user.verificationToken = null;
-        user.verificationTokenExpires = null;
-        await user.save();
+        // ── Run automatic member onboarding ──────────────────────────────────
+        await onboardMember(user);
 
-        // Send welcome email
-        await sendWelcomeEmail(user.email, user.firstName);
+        // Send welcome email (non-blocking)
+        sendWelcomeEmail(user.email, user.firstName).catch((e) =>
+            console.error("[Verify] Welcome email failed:", e.message)
+        );
 
-        res.json({
+        // Return a fresh token + full member profile
+        const token = generateToken(user._id);
+
+        return res.json({
             success: true,
-            message: "Email verified successfully. Welcome to DateClone!",
+            message: user.isActive
+                ? "Email verified! Welcome to DateClone 💕 Your profile is now live."
+                : "Email verified! Your account is under review and will be activated shortly.",
+            token,
             user: {
                 _id: user._id,
                 firstName: user.firstName,
                 lastName: user.lastName,
                 email: user.email,
-                emailVerified: user.emailVerified,
+                username: user.username,
+                profilePicture: user.profilePicture,
+                isMember: user.isMember,
+                isActive: user.isActive,
+                memberSince: user.memberSince,
+                profileCompletion: user.profileCompletion,
+                emailVerified: true,
             },
         });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            success: false,
-            message: "Email verification failed",
-        });
+        console.error("[Verify OTP]", error);
+        res.status(500).json({ success: false, message: "Verification failed. Please try again." });
     }
 });
 
-// POST: Resend Verification Email
+// ── POST /resend-verification ─────────────────────────────────────────────────
 router.post("/resend-verification", async (req, res) => {
     try {
         const { email } = req.body;
-
-        if (!email) {
-            return res.status(400).json({
-                success: false,
-                message: "Email is required",
-            });
-        }
+        if (!email) return res.status(400).json({ success: false, message: "Email is required" });
 
         const user = await User.findOne({ email });
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+        if (user.isMember) return res.status(400).json({ success: false, message: "Account already verified" });
 
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found",
-            });
-        }
-
-        if (user.emailVerified) {
-            return res.status(400).json({
-                success: false,
-                message: "Email already verified",
-            });
-        }
-
-        // Generate new verification token
-        const verificationToken = crypto.randomBytes(32).toString("hex");
-        user.verificationToken = verificationToken;
-        user.verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        user.verificationToken = Math.floor(100000 + Math.random() * 900000).toString();
+        user.verificationTokenExpires = new Date(Date.now() + 10 * 60 * 1000);
         await user.save();
 
-        // Send verification email
-        await sendVerificationEmail(email, verificationToken);
+        await sendVerificationEmail(email, user.verificationToken);
 
-        res.json({
-            success: true,
-            message: "Verification email resent. Please check your inbox.",
-        });
+        res.json({ success: true, message: "New verification code sent. Check your inbox." });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            success: false,
-            message: "Resend verification failed",
-        });
+        console.error("[Resend]", error);
+        res.status(500).json({ success: false, message: "Resend failed" });
     }
 });
 
-// POST: Login
+// ── POST /login ───────────────────────────────────────────────────────────────
 router.post(
     "/login",
     [body("email").isEmail(), body("password").exists()],
     async (req, res) => {
         try {
-            const errors = validationResult(req);
-            if (!errors.isEmpty()) {
-                return res.status(400).json({ success: false, errors: errors.array() });
+            const validationErrors = validationResult(req);
+            if (!validationErrors.isEmpty()) {
+                return res.status(400).json({ success: false, errors: validationErrors.array() });
             }
 
             const { email, password } = req.body;
 
-            // Find user
             const user = await User.findOne({ email });
-
             if (!user) {
-                return res.status(401).json({
-                    success: false,
-                    message: "Invalid email or password",
-                });
+                return res.status(401).json({ success: false, message: "Invalid email or password" });
             }
 
-            // Check if email is verified
+            // Must have verified email to log in
             if (!user.emailVerified) {
                 return res.status(403).json({
                     success: false,
                     message: "Please verify your email before logging in",
+                    requiresVerification: true,
+                    email: user.email,
                 });
             }
 
-            // Compare password
-            const isPasswordValid = await bcrypt.compare(password, user.password);
+            if (user.isBanned) {
+                return res.status(403).json({ success: false, message: "Account suspended. Contact support." });
+            }
 
-            if (!isPasswordValid) {
-                return res.status(401).json({
-                    success: false,
-                    message: "Invalid email or password",
-                });
+            const passwordValid = await bcrypt.compare(password, user.password);
+            if (!passwordValid) {
+                return res.status(401).json({ success: false, message: "Invalid email or password" });
             }
 
             // Update last login
             user.lastLogin = new Date();
             await user.save();
 
-            // Generate token
             const token = generateToken(user._id);
 
-            res.json({
+            return res.json({
                 success: true,
                 message: "Login successful",
                 token,
@@ -340,40 +261,29 @@ router.post(
                     username: user.username,
                     profilePicture: user.profilePicture,
                     isPremium: user.isPremium,
+                    premiumTier: user.premiumTier,
+                    isMember: user.isMember,
+                    isActive: user.isActive,
+                    profileCompletion: user.profileCompletion,
+                    memberSince: user.memberSince,
                 },
             });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({
-                success: false,
-                message: "Login failed",
-            });
+            console.error("[Login]", error);
+            res.status(500).json({ success: false, message: "Login failed" });
         }
     }
 );
 
-// GET: Get Current User
+// ── GET /me ───────────────────────────────────────────────────────────────────
 router.get("/me", authenticateToken, async (req, res) => {
     try {
-        const user = await User.findById(req.user.userId).select("-password");
-
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found",
-            });
-        }
-
-        res.json({
-            success: true,
-            user,
-        });
+        const user = await User.findById(req.user.userId).select(PUBLIC_FIELDS);
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+        res.json({ success: true, user });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            success: false,
-            message: "Failed to fetch user",
-        });
+        console.error("[Me]", error);
+        res.status(500).json({ success: false, message: "Failed to fetch user" });
     }
 });
 

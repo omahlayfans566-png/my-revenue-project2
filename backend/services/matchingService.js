@@ -1,152 +1,142 @@
 import { User } from "../models/User.js";
 import { Match } from "../models/Match.js";
 
-export const getMatchSuggestions = async (userId) => {
-    try {
-        const user = await User.findById(userId);
-
-        if (!user) {
-            throw new Error("User not found");
-        }
-
-        // Build query based on user preferences
-        const query = {
-            _id: { $ne: userId },
-            isActive: true,
-            isBanned: false,
-            emailVerified: true,
-            gender: user.lookingFor === "both" ? { $in: ["male", "female"] } : user.lookingFor.slice(0, -1), // Remove 's' for singular
-        };
-
-        // Age range filter
-        if (user.minAge && user.maxAge) {
-            query.age = { $gte: user.minAge, $lte: user.maxAge };
-        }
-
-        // Location filter
-        if (user.preferredDistance) {
-            if (user.preferredDistance === "within_10km") {
-                query.latitude = {
-                    $gte: user.latitude - 0.1,
-                    $lte: user.latitude + 0.1,
-                };
-                query.longitude = {
-                    $gte: user.longitude - 0.1,
-                    $lte: user.longitude + 0.1,
-                };
-            } else if (user.preferredDistance === "within_50km") {
-                query.latitude = {
-                    $gte: user.latitude - 0.5,
-                    $lte: user.latitude + 0.5,
-                };
-                query.longitude = {
-                    $gte: user.longitude - 0.5,
-                    $lte: user.longitude + 0.5,
-                };
-            }
-        }
-
-        // Find users matching criteria
-        let candidates = await User.find(query).limit(50);
-
-        // Score and sort candidates based on compatibility
-        const scoredCandidates = candidates.map((candidate) => {
-            let score = 100;
-
-            // Interest compatibility
-            const commonInterests = user.interests.filter((interest) =>
-                candidate.interests.includes(interest)
-            ).length;
-            score += commonInterests * 10;
-
-            // Age proximity
-            const ageDifference = Math.abs(user.age - candidate.age);
-            score -= ageDifference * 2;
-
-            // Religion compatibility
-            if (user.religion === candidate.religion) {
-                score += 15;
-            }
-
-            // Relationship goal compatibility
-            if (user.relationshipGoal === candidate.relationshipGoal) {
-                score += 20;
-            }
-
-            // Children preferences
-            if (user.wantsChildren === candidate.wantsChildren) {
-                score += 15;
-            }
-
-            // Premium boost
-            if (candidate.isPremium) {
-                score += 5;
-            }
-
-            return { user: candidate, score };
-        });
-
-        // Sort by score and exclude already viewed/matched
-        const matches = await Match.find({ userId });
-        const matchedUserIds = matches.map((m) => m.matchedUserId.toString());
-
-        const suggestions = scoredCandidates
-            .filter((s) => !matchedUserIds.includes(s.user._id.toString()))
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 10)
-            .map((s) => ({
-                _id: s.user._id,
-                firstName: s.user.firstName,
-                lastName: s.user.lastName,
-                profilePicture: s.user.profilePicture,
-                age: s.user.age,
-                city: s.user.city,
-                country: s.user.country,
-                occupation: s.user.occupation,
-                aboutMe: s.user.aboutMe,
-                interests: s.user.interests,
-                compatibilityScore: Math.round(s.score),
-            }));
-
-        return suggestions;
-    } catch (error) {
-        throw new Error(`Error getting match suggestions: ${error.message}`);
-    }
+// Map lookingFor value → gender values to query
+const LOOKING_FOR_GENDER_MAP = {
+    men: ["male"],
+    women: ["female"],
+    both: ["male", "female", "other"],
 };
 
+/**
+ * Return up to 10 scored, filtered suggestions for a given user.
+ * Only fully onboarded (isMember=true), active, non-banned members are shown.
+ */
+export const getMatchSuggestions = async (userId) => {
+    const user = await User.findById(userId);
+    if (!user) throw new Error("User not found");
+
+    // ── Base query ────────────────────────────────────────────────────────────
+    const genders = LOOKING_FOR_GENDER_MAP[user.lookingFor] || ["male", "female", "other"];
+
+    const query = {
+        _id: { $ne: userId },
+        isMember: true,
+        isActive: true,
+        isBanned: false,
+        emailVerified: true,
+        flaggedForReview: { $ne: true },
+        "privacySettings.profileVisible": { $ne: false },
+        gender: { $in: genders },
+        // Also exclude users who have blocked the current user
+        blocked: { $nin: [userId] },
+    };
+
+    // ── Age range ─────────────────────────────────────────────────────────────
+    if (user.minAge && user.maxAge) {
+        query.age = { $gte: user.minAge, $lte: user.maxAge };
+    }
+
+    // ── Country filter ────────────────────────────────────────────────────────
+    if (user.preferredCountry && user.preferredCountry !== "Anywhere in Africa") {
+        query.country = user.preferredCountry;
+    }
+
+    // ── Distance filter (bounding-box approximation) ──────────────────────────
+    if (user.latitude && user.longitude && user.preferredDistance) {
+        const DELTA = { within_10km: 0.09, within_50km: 0.45, within_country: null }[user.preferredDistance];
+        if (DELTA) {
+            query.latitude = { $gte: user.latitude - DELTA, $lte: user.latitude + DELTA };
+            query.longitude = { $gte: user.longitude - DELTA, $lte: user.longitude + DELTA };
+        }
+    }
+
+    // ── Fetch candidates ──────────────────────────────────────────────────────
+    const candidates = await User.find(query).limit(80).lean();
+
+    // ── Get already-acted-on user IDs ─────────────────────────────────────────
+    const acted = await Match.find({
+        userId,
+        status: { $in: ["liked", "matched", "rejected", "blocked"] },
+    }).select("matchedUserId").lean();
+    const actedIds = new Set(acted.map(m => m.matchedUserId.toString()));
+
+    // ── Score each candidate ──────────────────────────────────────────────────
+    const scored = candidates
+        .filter(c => !actedIds.has(c._id.toString()))
+        .map(c => ({ candidate: c, score: scoreCompatibility(user, c) }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 10);
+
+    return scored.map(({ candidate: c, score }) => ({
+        _id: c._id,
+        firstName: c.firstName,
+        lastName: c.lastName,
+        profilePicture: c.profilePicture,
+        age: c.age,
+        city: c.city,
+        country: c.country,
+        occupation: c.occupation,
+        aboutMe: c.aboutMe,
+        interests: c.interests,
+        relationshipGoal: c.relationshipGoal,
+        profileCompletion: c.profileCompletion,
+        isPremium: c.isPremium,
+        memberSince: c.memberSince,
+        compatibilityScore: Math.min(99, Math.round(score)),
+    }));
+};
+
+/**
+ * Score two user objects for compatibility (0–100+).
+ * Higher = better match. Used for sorting suggestions.
+ */
+const scoreCompatibility = (user, candidate) => {
+    let score = 50; // base
+
+    // Common interests (+8 per shared, max +40)
+    const sharedInterests = (user.interests || [])
+        .filter(i => (candidate.interests || []).includes(i)).length;
+    score += Math.min(40, sharedInterests * 8);
+
+    // Age proximity (+10 if within 3 years, linear decay)
+    const ageDiff = Math.abs((user.age || 25) - (candidate.age || 25));
+    score += Math.max(0, 10 - ageDiff * 1.2);
+
+    // Relationship goal match (+20)
+    if (user.relationshipGoal && user.relationshipGoal === candidate.relationshipGoal) score += 20;
+
+    // Religion match (+12)
+    if (user.religion && user.religion === candidate.religion) score += 12;
+
+    // Children preferences (+10)
+    if (user.wantsChildren && user.wantsChildren === candidate.wantsChildren) score += 10;
+
+    // Lifestyle (+5 each)
+    if (user.smoking && user.smoking === candidate.smoking) score += 5;
+    if (user.drinking && user.drinking === candidate.drinking) score += 5;
+
+    // Profile quality boost (completed profiles are more attractive)
+    const pct = candidate.profileCompletion || 0;
+    score += Math.round(pct * 0.08); // up to +8 for 100% completion
+
+    // Premium boost (+5)
+    if (candidate.isPremium) score += 5;
+
+    // Recency boost: new members get a small initial boost
+    const daysSinceJoin = candidate.memberSince
+        ? (Date.now() - new Date(candidate.memberSince).getTime()) / 86_400_000
+        : 999;
+    if (daysSinceJoin < 7) score += 8;
+
+    return score;
+};
+
+/**
+ * Public compatibility score between two full user objects (0–100).
+ * Exposed for API use (e.g. profile view).
+ */
 export const calculateCompatibility = (user1, user2) => {
-    let score = 0;
-
-    // Common interests (weight: 30)
-    const commonInterests = user1.interests.filter((i) =>
-        user2.interests.includes(i)
-    ).length;
-    score += (commonInterests / Math.max(user1.interests.length, 1)) * 30;
-
-    // Age (weight: 20)
-    const ageDiff = Math.abs(user1.age - user2.age);
-    score += Math.max(0, 20 - ageDiff * 0.5);
-
-    // Religion (weight: 20)
-    if (user1.religion === user2.religion) {
-        score += 20;
-    } else {
-        score += 5;
-    }
-
-    // Relationship goals (weight: 15)
-    if (user1.relationshipGoal === user2.relationshipGoal) {
-        score += 15;
-    } else {
-        score += 5;
-    }
-
-    // Children preferences (weight: 15)
-    if (user1.hasChildren === user2.hasChildren && user1.wantsChildren === user2.wantsChildren) {
-        score += 15;
-    } else if (user1.wantsChildren === user2.wantsChildren) {
-        score += 8;
-    }
-
-    return Math.round(Math.min(100, score));
+    const raw = scoreCompatibility(user1, user2);
+    return Math.min(100, Math.max(0, Math.round(raw)));
 };

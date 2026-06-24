@@ -5,35 +5,42 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-// Helper function to get auth token
-const getAuthToken = () => {
-    return localStorage.getItem("authToken");
-};
+// Helper to get auth token (internal use only)
+const _getToken = (): string | null => localStorage.getItem("authToken");
 
 // Helper function for API requests with auth
-const apiCall = async (endpoint, options = {}) => {
-    const headers = {
+const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any> => {
+    const headers: Record<string, string> = {
         "Content-Type": "application/json",
-        ...options.headers,
+        ...(options.headers as Record<string, string>),
     };
 
-    // Add token if available
-    const token = getAuthToken();
-    if (token) {
-        headers.Authorization = `Bearer ${token}`;
+    const token = _getToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    let response: Response;
+    try {
+        response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
+    } catch (networkErr: any) {
+        // Network failure — server is down or unreachable
+        throw new Error(
+            "Cannot reach the server. Make sure the backend is running on port 5000."
+        );
     }
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        ...options,
-        headers,
-    });
+    // Try to parse JSON body (even on error responses)
+    let body: any = {};
+    try {
+        body = await response.json();
+    } catch {
+        body = { message: `Server returned status ${response.status}` };
+    }
 
     if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "API request failed");
+        throw new Error(body.message || `Request failed (${response.status})`);
     }
 
-    return response.json();
+    return body;
 };
 
 // ============================================
@@ -55,7 +62,14 @@ export const authAPI = {
         });
     },
 
-    resendVerification: async (email) => {
+    verifyOtp: async (email: string, otp: string) => {
+        return apiCall("/auth/verify-otp", {
+            method: "POST",
+            body: JSON.stringify({ email, otp }),
+        });
+    },
+
+    resendVerification: async (email: string) => {
         return apiCall("/auth/resend-verification", {
             method: "POST",
             body: JSON.stringify({ email }),
@@ -84,27 +98,41 @@ export const authAPI = {
 // ============================================
 
 export const profileAPI = {
-    getProfile: async (userId) => {
+    getProfile: async (userId: string) => {
         return apiCall(`/profile/${userId}`);
     },
 
-    updateProfile: async (userId, profileData) => {
+    updateProfile: async (userId: string, profileData: object) => {
         return apiCall(`/profile/${userId}`, {
             method: "PUT",
             body: JSON.stringify(profileData),
         });
     },
 
-    uploadPhoto: async (userId, photoUrl) => {
+    uploadPhoto: async (userId: string, photoUrl: string) => {
         return apiCall(`/profile/${userId}/photo`, {
             method: "POST",
             body: JSON.stringify({ photoUrl }),
         });
     },
 
-    getAllProfiles: async (filters = {}) => {
-        const queryParams = new URLSearchParams(filters);
-        return apiCall(`/profile?${queryParams}`);
+    getAllProfiles: async (filters: Record<string, any> = {}) => {
+        const queryParams = new URLSearchParams(filters).toString();
+        return apiCall(`/profile${queryParams ? `?${queryParams}` : ""}`);
+    },
+
+    reportUser: async (userId: string, reason: string) => {
+        return apiCall(`/profile/${userId}/report`, {
+            method: "POST",
+            body: JSON.stringify({ reason }),
+        });
+    },
+
+    updatePrivacy: async (userId: string, settings: object) => {
+        return apiCall(`/profile/${userId}/privacy`, {
+            method: "PUT",
+            body: JSON.stringify(settings),
+        });
     },
 };
 
@@ -214,19 +242,19 @@ export const paymentAPI = {
 // UTILITY FUNCTIONS
 // ============================================
 
-export const setAuthToken = (token) => {
+export const setAuthToken = (token: string) => {
     localStorage.setItem("authToken", token);
 };
 
-export const getAuthToken = () => {
+export const getAuthToken = (): string | null => {
     return localStorage.getItem("authToken");
 };
 
-export const isAuthenticated = () => {
+export const isAuthenticated = (): boolean => {
     return !!getAuthToken();
 };
 
-export const saveUserToLocal = (user) => {
+export const saveUserToLocal = (user: object) => {
     localStorage.setItem("user", JSON.stringify(user));
 };
 
@@ -246,10 +274,4 @@ export default {
     matchAPI,
     messageAPI,
     paymentAPI,
-    setAuthToken,
-    getAuthToken,
-    isAuthenticated,
-    saveUserToLocal,
-    getUserFromLocal,
-    clearAuthData,
 };

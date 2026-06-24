@@ -1,1151 +1,724 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import "../style/register.css";
+import { authAPI, setAuthToken, saveUserToLocal } from "../services/apiService";
 
-interface FormData {
-    // Step 1: Account Information
-    firstName: string;
-    lastName: string;
-    username: string;
-    email: string;
-    phone: string;
-    password: string;
-    confirmPassword: string;
+// ─── African countries ────────────────────────────────────────────────────────
+const AFRICAN_COUNTRIES = [
+    "Algeria", "Angola", "Benin", "Botswana", "Burkina Faso", "Burundi", "Cabo Verde",
+    "Cameroon", "Central African Republic", "Chad", "Comoros", "Congo",
+    "Democratic Republic of Congo", "Djibouti", "Egypt", "Equatorial Guinea",
+    "Eritrea", "Eswatini", "Ethiopia", "Gabon", "Gambia", "Ghana", "Guinea",
+    "Guinea-Bissau", "Ivory Coast", "Kenya", "Lesotho", "Liberia", "Libya",
+    "Madagascar", "Malawi", "Mali", "Mauritania", "Mauritius", "Morocco", "Mozambique",
+    "Namibia", "Niger", "Nigeria", "Rwanda", "São Tomé and Príncipe", "Senegal",
+    "Seychelles", "Sierra Leone", "Somalia", "South Africa", "South Sudan", "Sudan",
+    "Tanzania", "Togo", "Tunisia", "Uganda", "Zambia", "Zimbabwe",
+];
 
-    // Step 2: Personal Information
-    dateOfBirth: string;
-    age: number;
-    gender: string;
-    lookingFor: string;
-    country: string;
-    state: string;
-    city: string;
-    latitude: number;
-    longitude: number;
+// ─── Location hook ────────────────────────────────────────────────────────────
+type LocStatus = "idle" | "requesting" | "detecting" | "detected" | "denied" | "unsupported" | "error";
+interface LocResult { country: string; state: string; city: string; lat: number; lng: number; }
 
-    // Step 3: Profile Information
-    profilePicture: string;
-    aboutMe: string;
-    occupation: string;
-    education: string;
-    languages: string[];
+function useLocation(onResult: (r: LocResult) => void) {
+    const [status, setStatus] = useState<LocStatus>("idle");
+    const [msg, setMsg] = useState("");
+    const busy = useRef(false);
 
-    // Step 4: Interests
-    interests: string[];
+    const detect = useCallback(async () => {
+        if (busy.current) return;
+        if (!navigator.geolocation) {
+            setStatus("unsupported");
+            setMsg("Geolocation not supported. Please fill in manually.");
+            return;
+        }
+        busy.current = true;
+        setStatus("requesting");
+        setMsg("Waiting for permission…");
 
-    // Step 5: Match Preferences
-    minAge: number;
-    maxAge: number;
-    preferredCountry: string;
-    preferredDistance: string;
+        navigator.geolocation.getCurrentPosition(
+            async (pos) => {
+                setStatus("detecting");
+                setMsg("Pinpointing your location…");
+                const { latitude: lat, longitude: lng } = pos.coords;
+                try {
+                    const r = await fetch(
+                        `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`
+                    );
+                    const d = await r.json();
+                    const country = (d.countryName ?? "").trim();
+                    const state = (d.principalSubdivision ?? "").trim();
+                    const city = (d.city || d.locality || "").trim();
+                    onResult({ country, state, city, lat, lng });
+                    setStatus("detected");
+                    setMsg(`📍 ${[city, state, country].filter(Boolean).join(", ")}`);
+                } catch {
+                    setStatus("error"); setMsg("Couldn't resolve address. Fill in manually or retry.");
+                } finally { busy.current = false; }
+            },
+            (e) => {
+                busy.current = false;
+                if (e.code === e.PERMISSION_DENIED) { setStatus("denied"); setMsg("Permission denied. Fill in manually."); }
+                else { setStatus("error"); setMsg("Location unavailable. Fill in manually or retry."); }
+            },
+            { timeout: 12000, maximumAge: 60000, enableHighAccuracy: false }
+        );
+    }, [onResult]);
 
-    // Step 6: Relationship & Lifestyle
-    relationshipGoal: string;
-    hasChildren: string;
-    wantsChildren: string;
-    smoking: string;
-    drinking: string;
-    religion: string;
-    religionImportance: string;
-    relationshipValue: string;
-
-    // Step 7: Verification
-    emailVerified: boolean;
+    useEffect(() => { detect(); }, []); // eslint-disable-line
+    return { status, msg, detect };
 }
 
+
+// ─── Reusable UI atoms ────────────────────────────────────────────────────────
+const OptionCard = ({ value, label, icon, selected, onClick }: any) => (
+    <button type="button" className={`opt-card ${selected ? "selected" : ""}`} onClick={() => onClick(value)}>
+        {icon && <span className="opt-icon">{icon}</span>}
+        <span className="opt-label">{label}</span>
+        {selected && <span className="opt-check">✓</span>}
+    </button>
+);
+
+const PillSelect = ({ options, value, onChange, multi = false }: any) => {
+    const toggle = (v: string) => {
+        if (!multi) { onChange(v); return; }
+        const arr: string[] = Array.isArray(value) ? value : [];
+        onChange(arr.includes(v) ? arr.filter((x: string) => x !== v) : [...arr, v]);
+    };
+    const isSelected = (v: string) => multi ? (Array.isArray(value) && value.includes(v)) : value === v;
+    return (
+        <div className="pill-group">
+            {options.map(({ v, label }: any) => (
+                <button key={v} type="button" className={`pill ${isSelected(v) ? "selected" : ""}`} onClick={() => toggle(v)}>
+                    {label}
+                </button>
+            ))}
+        </div>
+    );
+};
+
+const FieldGroup = ({ label, error, children, hint }: any) => (
+    <div className={`rg-field ${error ? "has-error" : ""}`}>
+        {label && <label className="rg-label">{label}</label>}
+        {hint && <p className="rg-hint">{hint}</p>}
+        {children}
+        {error && <span className="rg-error"><span>⚠</span>{error}</span>}
+    </div>
+);
+
+const StepHeader = ({ icon, title, subtitle }: any) => (
+    <div className="step-header">
+        <div className="step-icon">{icon}</div>
+        <h2 className="step-title">{title}</h2>
+        {subtitle && <p className="step-subtitle">{subtitle}</p>}
+    </div>
+);
+
+
+// ─── Step config (drives the progress bar) ───────────────────────────────────
+const STEPS = [
+    { id: 1, label: "You", icon: "👤" },
+    { id: 2, label: "Identity", icon: "✨" },
+    { id: 3, label: "Location", icon: "📍" },
+    { id: 4, label: "Photos", icon: "📸" },
+    { id: 5, label: "Lifestyle", icon: "🌿" },
+    { id: 6, label: "Goals", icon: "💞" },
+    { id: 7, label: "Verify", icon: "✉️" },
+];
+
+// ─── Form data type ───────────────────────────────────────────────────────────
+interface FD {
+    // Step 1
+    firstName: string; lastName: string; username: string;
+    email: string; phone: string; password: string; confirmPassword: string;
+    // Step 2
+    dateOfBirth: string; age: number; gender: string; lookingFor: string;
+    // Step 3
+    country: string; state: string; city: string; latitude: number; longitude: number;
+    // Step 4
+    profilePicture: string; aboutMe: string; occupation: string;
+    education: string; languages: string[];
+    // Step 5
+    interests: string[]; smoking: string; drinking: string;
+    // Step 6
+    relationshipGoal: string; hasChildren: string; wantsChildren: string;
+    religion: string; religionImportance: string; relationshipValue: string;
+    minAge: number; maxAge: number; preferredCountry: string; preferredDistance: string;
+}
+
+const BLANK: FD = {
+    firstName: "", lastName: "", username: "", email: "", phone: "", password: "", confirmPassword: "",
+    dateOfBirth: "", age: 0, gender: "", lookingFor: "",
+    country: "", state: "", city: "", latitude: 0, longitude: 0,
+    profilePicture: "", aboutMe: "", occupation: "", education: "", languages: [],
+    interests: [], smoking: "", drinking: "",
+    relationshipGoal: "", hasChildren: "", wantsChildren: "",
+    religion: "", religionImportance: "", relationshipValue: "",
+    minAge: 18, maxAge: 50, preferredCountry: "", preferredDistance: "",
+};
+
+
+// ─── Main Register component ──────────────────────────────────────────────────
 const Register = () => {
-    const [currentStep, setCurrentStep] = useState(1);
-    const [formData, setFormData] = useState<FormData>({
-        // Step 1
-        firstName: "",
-        lastName: "",
-        username: "",
-        email: "",
-        phone: "",
-        password: "",
-        confirmPassword: "",
-        // Step 2
-        dateOfBirth: "",
-        age: 0,
-        gender: "",
-        lookingFor: "",
-        country: "",
-        state: "",
-        city: "",
-        latitude: 0,
-        longitude: 0,
-        // Step 3
-        profilePicture: "",
-        aboutMe: "",
-        occupation: "",
-        education: "",
-        languages: [],
-        // Step 4
-        interests: [],
-        // Step 5
-        minAge: 18,
-        maxAge: 80,
-        preferredCountry: "",
-        preferredDistance: "",
-        // Step 6
-        relationshipGoal: "",
-        hasChildren: "",
-        wantsChildren: "",
-        smoking: "",
-        drinking: "",
-        religion: "",
-        religionImportance: "",
-        relationshipValue: "",
-        // Step 7
-        emailVerified: false,
-    });
-
+    const navigate = useNavigate();
+    const [step, setStep] = useState(1);
+    const [fd, setFd] = useState<FD>(BLANK);
     const [errors, setErrors] = useState<Record<string, string>>({});
-    const [previewImage, setPreviewImage] = useState<string>("");
-    const [showPassword, setShowPassword] = useState(false);
-    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [showPw, setShowPw] = useState(false);
+    const [showCpw, setShowCpw] = useState(false);
+    const [preview, setPreview] = useState("");
+    const [submitting, setSubmitting] = useState(false);
+    const [submitErr, setSubmitErr] = useState("");
+    const fileRef = useRef<HTMLInputElement>(null);
 
-    // Get user location on mount
-    useEffect(() => {
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    setFormData((prev) => ({
-                        ...prev,
-                        latitude: position.coords.latitude,
-                        longitude: position.coords.longitude,
-                    }));
-                },
-                () => {
-                    console.log("Location access denied");
-                }
-            );
+    // helpers
+    const set = (k: keyof FD, v: any) => setFd(p => ({ ...p, [k]: v }));
+    const inp = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        if (name === "dateOfBirth") {
+            const age = new Date().getFullYear() - new Date(value).getFullYear();
+            setFd(p => ({ ...p, dateOfBirth: value, age }));
+        } else {
+            setFd(p => ({ ...p, [name]: value }));
         }
+    };
+
+    // location hook
+    const onLocResult = useCallback(({ country, state, city, lat, lng }: any) => {
+        setFd(p => ({ ...p, country, state, city, latitude: lat, longitude: lng }));
     }, []);
+    const loc = useLocation(onLocResult);
 
-    const interestsOptions = [
-        "Music",
-        "Sports",
-        "Movies",
-        "Gaming",
-        "Cooking",
-        "Reading",
-        "Traveling",
-        "Fashion",
-        "Technology",
-        "Fitness",
-        "Business",
-        "Photography",
-    ];
+    // photo upload
+    const onPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const r = reader.result as string;
+            setPreview(r); set("profilePicture", r);
+        };
+        reader.readAsDataURL(file);
+    };
 
-    const validateStep1 = () => {
-        const newErrors: Record<string, string> = {};
-        if (!formData.firstName.trim())
-            newErrors.firstName = "First name is required";
-        if (!formData.lastName.trim())
-            newErrors.lastName = "Last name is required";
-        if (!formData.username.trim())
-            newErrors.username = "Username is required";
-        if (!formData.email.trim()) {
-            newErrors.email = "Email is required";
-        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-            newErrors.email = "Invalid email format";
+    const toggleArr = (k: "interests" | "languages", v: string) => {
+        setFd(p => ({
+            ...p,
+            [k]: p[k].includes(v) ? p[k].filter((x: string) => x !== v) : [...p[k], v],
+        }));
+    };
+
+    // ── Validation ──────────────────────────────────────────────────────────────
+    const validate = (s: number) => {
+        const e: Record<string, string> = {};
+        if (s === 1) {
+            if (!fd.firstName.trim()) e.firstName = "First name is required";
+            if (!fd.lastName.trim()) e.lastName = "Last name is required";
+            if (!fd.username.trim()) e.username = "Choose a username";
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fd.email)) e.email = "Enter a valid email";
+            if (fd.password.length < 8) e.password = "At least 8 characters";
+            if (fd.password !== fd.confirmPassword) e.confirmPassword = "Passwords don't match";
         }
-        if (!formData.password.trim())
-            newErrors.password = "Password is required";
-        if (formData.password.length < 8)
-            newErrors.password = "Password must be at least 8 characters";
-        if (formData.password !== formData.confirmPassword)
-            newErrors.confirmPassword = "Passwords do not match";
-
-        setErrors(newErrors);
-        return Object.keys(newErrors).length === 0;
-    };
-
-    const validateStep2 = () => {
-        const newErrors: Record<string, string> = {};
-        if (!formData.dateOfBirth) newErrors.dateOfBirth = "Date of birth is required";
-        if (!formData.gender) newErrors.gender = "Gender is required";
-        if (!formData.lookingFor) newErrors.lookingFor = "Please select who you're looking for";
-        if (!formData.country) newErrors.country = "Country is required";
-        if (!formData.state) newErrors.state = "State/Province is required";
-        if (!formData.city) newErrors.city = "City is required";
-
-        setErrors(newErrors);
-        return Object.keys(newErrors).length === 0;
-    };
-
-    const validateStep3 = () => {
-        const newErrors: Record<string, string> = {};
-        if (!formData.profilePicture) newErrors.profilePicture = "Profile picture is required";
-        if (!formData.aboutMe.trim()) newErrors.aboutMe = "Please tell us about yourself";
-        if (formData.aboutMe.length < 20)
-            newErrors.aboutMe = "About me must be at least 20 characters";
-        if (!formData.occupation.trim())
-            newErrors.occupation = "Occupation is required";
-        if (!formData.education) newErrors.education = "Education level is required";
-        if (formData.languages.length === 0)
-            newErrors.languages = "Select at least one language";
-
-        setErrors(newErrors);
-        return Object.keys(newErrors).length === 0;
-    };
-
-    const validateStep4 = () => {
-        const newErrors: Record<string, string> = {};
-        if (formData.interests.length === 0)
-            newErrors.interests = "Select at least one interest";
-
-        setErrors(newErrors);
-        return Object.keys(newErrors).length === 0;
-    };
-
-    const validateStep5 = () => {
-        const newErrors: Record<string, string> = {};
-        if (formData.minAge < 18) newErrors.minAge = "Minimum age must be 18";
-        if (formData.maxAge > 80) newErrors.maxAge = "Maximum age cannot exceed 80";
-        if (formData.minAge > formData.maxAge)
-            newErrors.maxAge = "Maximum age must be greater than minimum";
-        if (!formData.preferredCountry)
-            newErrors.preferredCountry = "Preferred country is required";
-        if (!formData.preferredDistance)
-            newErrors.preferredDistance = "Preferred distance is required";
-
-        setErrors(newErrors);
-        return Object.keys(newErrors).length === 0;
-    };
-
-    const validateStep6 = () => {
-        const newErrors: Record<string, string> = {};
-        if (!formData.relationshipGoal)
-            newErrors.relationshipGoal = "Relationship goal is required";
-        if (!formData.hasChildren)
-            newErrors.hasChildren = "Please answer if you have children";
-        if (!formData.wantsChildren)
-            newErrors.wantsChildren = "Please answer about future children";
-        if (!formData.smoking) newErrors.smoking = "Please select smoking preference";
-        if (!formData.drinking) newErrors.drinking = "Please select drinking preference";
-        if (!formData.religion) newErrors.religion = "Religion is required";
-        if (!formData.religionImportance)
-            newErrors.religionImportance = "Please rate religion importance";
-        if (!formData.relationshipValue)
-            newErrors.relationshipValue = "Please select your biggest relationship value";
-
-        setErrors(newErrors);
-        return Object.keys(newErrors).length === 0;
-    };
-
-    const handleNext = () => {
-        let isValid = false;
-
-        switch (currentStep) {
-            case 1:
-                isValid = validateStep1();
-                break;
-            case 2:
-                isValid = validateStep2();
-                break;
-            case 3:
-                isValid = validateStep3();
-                break;
-            case 4:
-                isValid = validateStep4();
-                break;
-            case 5:
-                isValid = validateStep5();
-                break;
-            case 6:
-                isValid = validateStep6();
-                break;
-            default:
-                isValid = true;
+        if (s === 2) {
+            if (!fd.dateOfBirth) e.dateOfBirth = "Birthday is required";
+            else if (fd.age < 18) e.dateOfBirth = "You must be 18 or older";
+            if (!fd.gender) e.gender = "Select your gender";
+            if (!fd.lookingFor) e.lookingFor = "Select who you're interested in";
         }
-
-        if (isValid) {
-            setCurrentStep(currentStep + 1);
-            setErrors({});
-            window.scrollTo(0, 0);
+        if (s === 3) {
+            if (!fd.country) e.country = "Country is required";
+            if (!fd.state) e.state = "State / Province is required";
+            if (!fd.city) e.city = "City is required";
         }
+        if (s === 4) {
+            if (!fd.profilePicture) e.profilePicture = "Add a profile photo";
+            if (fd.aboutMe.trim().length < 20) e.aboutMe = "Write at least 20 characters";
+            if (!fd.occupation.trim()) e.occupation = "What do you do?";
+            if (!fd.education) e.education = "Education level is required";
+            if (fd.languages.length === 0) e.languages = "Select at least one language";
+        }
+        if (s === 5) {
+            if (fd.interests.length === 0) e.interests = "Pick at least one interest";
+            if (!fd.smoking) e.smoking = "Required";
+            if (!fd.drinking) e.drinking = "Required";
+        }
+        if (s === 6) {
+            if (!fd.relationshipGoal) e.relationshipGoal = "What are you looking for?";
+            if (!fd.hasChildren) e.hasChildren = "Required";
+            if (!fd.wantsChildren) e.wantsChildren = "Required";
+            if (!fd.religion) e.religion = "Required";
+            if (!fd.religionImportance) e.religionImportance = "Required";
+            if (!fd.preferredCountry) e.preferredCountry = "Required";
+            if (!fd.preferredDistance) e.preferredDistance = "Required";
+        }
+        setErrors(e);
+        return Object.keys(e).length === 0;
     };
 
-    const handlePrevious = () => {
-        setCurrentStep(currentStep - 1);
+
+    // ── Navigation ───────────────────────────────────────────────────────────────
+    const next = async () => {
+        if (!validate(step)) return;
+        if (step === 6) {
+            setSubmitting(true); setSubmitErr("");
+            try {
+                const res = await authAPI.register(fd);
+                setAuthToken(res.token);
+                saveUserToLocal(res.user);
+                setStep(7);
+                window.scrollTo(0, 0);
+            } catch (err: any) {
+                setSubmitErr(err.message || "Registration failed. Please try again.");
+            } finally { setSubmitting(false); }
+            return;
+        }
         setErrors({});
+        setStep(s => s + 1);
         window.scrollTo(0, 0);
     };
+    const back = () => { setErrors({}); setStep(s => s - 1); window.scrollTo(0, 0); };
+    const pct = Math.round(((step - 1) / 6) * 100);
 
-    const handleInputChange = (
-        e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-    ) => {
-        const { name, value } = e.target;
-
-        if (name === "dateOfBirth") {
-            const dob = new Date(value);
-            const today = new Date();
-            const age = today.getFullYear() - dob.getFullYear();
-
-            setFormData((prev) => ({
-                ...prev,
-                [name]: value,
-                age: age,
-            }));
-        } else {
-            setFormData((prev) => ({
-                ...prev,
-                [name]: value,
-            }));
-        }
-    };
-
-    const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const result = reader.result as string;
-                setPreviewImage(result);
-                setFormData((prev) => ({
-                    ...prev,
-                    profilePicture: result,
-                }));
-                setErrors((prev) => {
-                    const newErrors = { ...prev };
-                    delete newErrors.profilePicture;
-                    return newErrors;
-                });
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-
-    const handleInterestToggle = (interest: string) => {
-        setFormData((prev) => ({
-            ...prev,
-            interests: prev.interests.includes(interest)
-                ? prev.interests.filter((i) => i !== interest)
-                : [...prev.interests, interest],
-        }));
-    };
-
-    const handleLanguageToggle = (language: string) => {
-        setFormData((prev) => ({
-            ...prev,
-            languages: prev.languages.includes(language)
-                ? prev.languages.filter((l) => l !== language)
-                : [...prev.languages, language],
-        }));
-    };
-
-    const handleSubmit = () => {
-        console.log("Form submitted:", formData);
-        alert("Registration successful!");
-    };
-
+    // ── Render ───────────────────────────────────────────────────────────────────
     return (
-        <div className="register-container">
-            <div className="register-card">
-                {/* Progress Bar */}
-                <div className="progress-section">
-                    <h1 className="register-title">Create Your DateClone Profile</h1>
-                    <div className="progress-bar">
-                        {[1, 2, 3, 4, 5, 6, 7].map((step) => (
-                            <div key={step} className="progress-item">
-                                <div
-                                    className={`progress-dot ${step <= currentStep ? "active" : ""
-                                        }`}
-                                >
-                                    {step < currentStep ? "✓" : step}
-                                </div>
-                                <div className="progress-label">
-                                    {step === 1
-                                        ? "Account"
-                                        : step === 2
-                                            ? "Personal"
-                                            : step === 3
-                                                ? "Profile"
-                                                : step === 4
-                                                    ? "Interests"
-                                                    : step === 5
-                                                        ? "Preferences"
-                                                        : step === 6
-                                                            ? "Lifestyle"
-                                                            : "Verify"}
-                                </div>
-                            </div>
-                        ))}
+        <div className="rg-shell">
+            {/* Top bar */}
+            <div className="rg-topbar">
+                <Link to="/" className="rg-logo">DateClone 💕</Link>
+                <div className="rg-progress-wrap">
+                    <div className="rg-progress-track">
+                        <div className="rg-progress-fill" style={{ width: `${pct}%` }} />
                     </div>
+                    <span className="rg-progress-pct">{pct}%</span>
                 </div>
+                <div className="rg-step-pills">
+                    {STEPS.map(s => (
+                        <div key={s.id} className={`rg-step-pill ${s.id === step ? "active" : s.id < step ? "done" : ""}`}>
+                            <span className="rsp-icon">{s.id < step ? "✓" : s.icon}</span>
+                            <span className="rsp-label">{s.label}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
 
-                {/* Form Steps */}
-                <div className="form-section">
-                    {currentStep === 1 && (
-                        <Step1
-                            formData={formData}
-                            errors={errors}
-                            handleInputChange={handleInputChange}
-                            showPassword={showPassword}
-                            setShowPassword={setShowPassword}
-                            showConfirmPassword={showConfirmPassword}
-                            setShowConfirmPassword={setShowConfirmPassword}
-                        />
-                    )}
-                    {currentStep === 2 && (
-                        <Step2
-                            formData={formData}
-                            errors={errors}
-                            handleInputChange={handleInputChange}
-                        />
-                    )}
-                    {currentStep === 3 && (
-                        <Step3
-                            formData={formData}
-                            errors={errors}
-                            handleInputChange={handleInputChange}
-                            previewImage={previewImage}
-                            fileInputRef={fileInputRef}
-                            handlePhotoUpload={handlePhotoUpload}
-                            handleLanguageToggle={handleLanguageToggle}
-                        />
-                    )}
-                    {currentStep === 4 && (
-                        <Step4
-                            formData={formData}
-                            errors={errors}
-                            interestsOptions={interestsOptions}
-                            handleInterestToggle={handleInterestToggle}
-                        />
-                    )}
-                    {currentStep === 5 && (
-                        <Step5
-                            formData={formData}
-                            errors={errors}
-                            handleInputChange={handleInputChange}
-                        />
-                    )}
-                    {currentStep === 6 && (
-                        <Step6
-                            formData={formData}
-                            errors={errors}
-                            handleInputChange={handleInputChange}
-                            handleLanguageToggle={handleLanguageToggle}
-                        />
-                    )}
-                    {currentStep === 7 && (
-                        <Step7
-                            formData={formData}
-                        />
-                    )}
-                </div>
+            {/* Card */}
+            <div className="rg-card">
+                {step === 1 && <S1 fd={fd} errors={errors} inp={inp} showPw={showPw} setShowPw={setShowPw} showCpw={showCpw} setShowCpw={setShowCpw} />}
+                {step === 2 && <S2 fd={fd} errors={errors} inp={inp} set={set} />}
+                {step === 3 && <S3 fd={fd} errors={errors} inp={inp} set={set} loc={loc} />}
+                {step === 4 && <S4 fd={fd} errors={errors} inp={inp} set={set} preview={preview} fileRef={fileRef} onPhoto={onPhoto} toggleArr={toggleArr} />}
+                {step === 5 && <S5 fd={fd} errors={errors} set={set} toggleArr={toggleArr} />}
+                {step === 6 && <S6 fd={fd} errors={errors} inp={inp} set={set} />}
+                {step === 7 && <S7 fd={fd} navigate={navigate} />}
 
-                {/* Navigation Buttons */}
-                <div className="button-group">
-                    {currentStep > 1 && (
-                        <button className="btn-secondary" onClick={handlePrevious}>
-                            ← Previous
-                        </button>
-                    )}
-                    {currentStep < 7 && (
-                        <button className="btn-primary" onClick={handleNext}>
-                            Next →
-                        </button>
-                    )}
-                    {currentStep === 7 && (
-                        <button className="btn-primary" onClick={handleSubmit}>
-                            Complete Registration
-                        </button>
-                    )}
-                </div>
+                {/* Bottom nav */}
+                {step < 7 && (
+                    <div className="rg-nav">
+                        {step > 1 && <button className="rg-btn-back" onClick={back}>← Back</button>}
+                        <div className="rg-nav-right">
+                            {submitErr && <span className="rg-submit-err">{submitErr}</span>}
+                            <button className="rg-btn-next" onClick={next} disabled={submitting}>
+                                {step === 6 ? (submitting ? <><span className="rg-spinner" /> Saving…</> : "Create Profile →") : "Continue →"}
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
 };
 
-// Step Components
-const Step1 = ({ formData, errors, handleInputChange, showPassword, setShowPassword, showConfirmPassword, setShowConfirmPassword }: any) => (
-    <div className="step-content">
-        <h2 className="step-title">Basic Account Information</h2>
-        <p className="step-subtitle">Let's start with your basic information</p>
 
-        <div className="form-row">
-            <div className="form-group">
-                <label>First Name *</label>
-                <input
-                    type="text"
-                    name="firstName"
-                    value={formData.firstName}
-                    onChange={handleInputChange}
-                    placeholder="John"
-                    className={errors.firstName ? "input-error" : ""}
-                />
-                {errors.firstName && (
-                    <span className="error-message">{errors.firstName}</span>
-                )}
-            </div>
-
-            <div className="form-group">
-                <label>Last Name *</label>
-                <input
-                    type="text"
-                    name="lastName"
-                    value={formData.lastName}
-                    onChange={handleInputChange}
-                    placeholder="Doe"
-                    className={errors.lastName ? "input-error" : ""}
-                />
-                {errors.lastName && (
-                    <span className="error-message">{errors.lastName}</span>
-                )}
-            </div>
+// ─── Step 1 — Account ─────────────────────────────────────────────────────────
+const S1 = ({ fd, errors, inp, showPw, setShowPw, showCpw, setShowCpw }: any) => (
+    <div className="rg-step">
+        <StepHeader icon="👤" title="Create your account" subtitle="Let's start with the basics. This is how you'll sign in." />
+        <div className="rg-row">
+            <FieldGroup label="First name" error={errors.firstName}>
+                <input className="rg-input" name="firstName" value={fd.firstName} onChange={inp} placeholder="e.g. Amara" />
+            </FieldGroup>
+            <FieldGroup label="Last name" error={errors.lastName}>
+                <input className="rg-input" name="lastName" value={fd.lastName} onChange={inp} placeholder="e.g. Osei" />
+            </FieldGroup>
         </div>
-
-        <div className="form-group">
-            <label>Username *</label>
-            <input
-                type="text"
-                name="username"
-                value={formData.username}
-                onChange={handleInputChange}
-                placeholder="johndoe123"
-                className={errors.username ? "input-error" : ""}
-            />
-            {errors.username && (
-                <span className="error-message">{errors.username}</span>
-            )}
-        </div>
-
-        <div className="form-group">
-            <label>Email Address *</label>
-            <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleInputChange}
-                placeholder="john@example.com"
-                className={errors.email ? "input-error" : ""}
-            />
-            {errors.email && (
-                <span className="error-message">{errors.email}</span>
-            )}
-        </div>
-
-        <div className="form-group">
-            <label>Phone Number (Optional)</label>
-            <input
-                type="tel"
-                name="phone"
-                value={formData.phone}
-                onChange={handleInputChange}
-                placeholder="+234 800 000 0000"
-            />
-        </div>
-
-        <div className="form-row">
-            <div className="form-group">
-                <label>Password *</label>
-                <div className="password-input-wrapper">
-                    <input
-                        type={showPassword ? "text" : "password"}
-                        name="password"
-                        value={formData.password}
-                        onChange={handleInputChange}
-                        placeholder="••••••••"
-                        className={errors.password ? "input-error" : ""}
-                    />
-                    <button
-                        type="button"
-                        className="password-toggle"
-                        onClick={() => setShowPassword(!showPassword)}
-                        title={showPassword ? "Hide password" : "Show password"}
-                    >
-                        {showPassword ? "👁️" : "👁️‍🗨️"}
-                    </button>
+        <FieldGroup label="Username" error={errors.username} hint="This is your public display name.">
+            <input className="rg-input" name="username" value={fd.username} onChange={inp} placeholder="e.g. amara_osei" />
+        </FieldGroup>
+        <FieldGroup label="Email address" error={errors.email}>
+            <input className="rg-input" type="email" name="email" value={fd.email} onChange={inp} placeholder="you@example.com" autoComplete="email" />
+        </FieldGroup>
+        <FieldGroup label="Phone number" error={""}>
+            <input className="rg-input" type="tel" name="phone" value={fd.phone} onChange={inp} placeholder="+234 800 000 0000 (optional)" />
+        </FieldGroup>
+        <div className="rg-row">
+            <FieldGroup label="Password" error={errors.password}>
+                <div className="rg-pw-wrap">
+                    <input className="rg-input" type={showPw ? "text" : "password"} name="password" value={fd.password} onChange={inp} placeholder="Min. 8 characters" autoComplete="new-password" />
+                    <button type="button" className="rg-eye" onClick={() => setShowPw(!showPw)}>{showPw ? "🙈" : "👁️"}</button>
                 </div>
-                {errors.password && (
-                    <span className="error-message">{errors.password}</span>
-                )}
-            </div>
-
-            <div className="form-group">
-                <label>Confirm Password *</label>
-                <div className="password-input-wrapper">
-                    <input
-                        type={showConfirmPassword ? "text" : "password"}
-                        name="confirmPassword"
-                        value={formData.confirmPassword}
-                        onChange={handleInputChange}
-                        placeholder="••••••••"
-                        className={errors.confirmPassword ? "input-error" : ""}
-                    />
-                    <button
-                        type="button"
-                        className="password-toggle"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        title={showConfirmPassword ? "Hide password" : "Show password"}
-                    >
-                        {showConfirmPassword ? "👁️" : "👁️‍🗨️"}
-                    </button>
+            </FieldGroup>
+            <FieldGroup label="Confirm password" error={errors.confirmPassword}>
+                <div className="rg-pw-wrap">
+                    <input className="rg-input" type={showCpw ? "text" : "password"} name="confirmPassword" value={fd.confirmPassword} onChange={inp} placeholder="Repeat password" autoComplete="new-password" />
+                    <button type="button" className="rg-eye" onClick={() => setShowCpw(!showCpw)}>{showCpw ? "🙈" : "👁️"}</button>
                 </div>
-                {errors.confirmPassword && (
-                    <span className="error-message">{errors.confirmPassword}</span>
-                )}
-            </div>
+            </FieldGroup>
         </div>
+        <p className="rg-signin-hint">Already have an account? <Link to="/login" className="rg-link">Sign in</Link></p>
     </div>
 );
 
-const Step2 = ({ formData, errors, handleInputChange }: any) => (
-    <div className="step-content">
-        <h2 className="step-title">Personal Information</h2>
-        <p className="step-subtitle">Tell us more about yourself</p>
 
-        <div className="form-row">
-            <div className="form-group">
-                <label>Date of Birth *</label>
-                <input
-                    type="date"
-                    name="dateOfBirth"
-                    value={formData.dateOfBirth}
-                    onChange={handleInputChange}
-                    className={errors.dateOfBirth ? "input-error" : ""}
-                />
-                {errors.dateOfBirth && (
-                    <span className="error-message">{errors.dateOfBirth}</span>
-                )}
-            </div>
+// ─── Step 2 — Identity ────────────────────────────────────────────────────────
+const GENDER_OPTS = [
+    { v: "male", label: "Man", icon: "♂️" },
+    { v: "female", label: "Woman", icon: "♀️" },
+    { v: "other", label: "Non-binary / Other", icon: "⚧️" },
+];
+const LOOKING_OPTS = [
+    { v: "men", label: "Men", icon: "♂️" },
+    { v: "women", label: "Women", icon: "♀️" },
+    { v: "both", label: "Everyone", icon: "💫" },
+];
 
-            <div className="form-group">
-                <label>Age</label>
-                <input
-                    type="text"
-                    value={formData.age || ""}
-                    disabled
-                    placeholder="Auto-calculated"
-                />
-            </div>
+const S2 = ({ fd, errors, inp, set }: any) => (
+    <div className="rg-step">
+        <StepHeader icon="✨" title="Tell us about yourself" subtitle="This helps us find the right matches for you." />
+        <div className="rg-row">
+            <FieldGroup label="Date of birth" error={errors.dateOfBirth} hint="You must be 18 or older.">
+                <input className="rg-input" type="date" name="dateOfBirth" value={fd.dateOfBirth} onChange={inp} max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split("T")[0]} />
+            </FieldGroup>
+            {fd.age > 0 && (
+                <FieldGroup label="Your age">
+                    <div className="rg-age-badge">{fd.age}</div>
+                </FieldGroup>
+            )}
         </div>
+        <FieldGroup label="I am a…" error={errors.gender}>
+            <div className="opt-grid col-3">
+                {GENDER_OPTS.map(o => <OptionCard key={o.v} {...o} selected={fd.gender === o.v} onClick={(v: string) => set("gender", v)} />)}
+            </div>
+        </FieldGroup>
+        <FieldGroup label="I'm interested in…" error={errors.lookingFor}>
+            <div className="opt-grid col-3">
+                {LOOKING_OPTS.map(o => <OptionCard key={o.v} {...o} selected={fd.lookingFor === o.v} onClick={(v: string) => set("lookingFor", v)} />)}
+            </div>
+        </FieldGroup>
+    </div>
+);
 
-        <div className="form-row">
-            <div className="form-group">
-                <label>Gender *</label>
-                <select
-                    name="gender"
-                    value={formData.gender}
-                    onChange={handleInputChange}
-                    className={errors.gender ? "input-error" : ""}
-                >
-                    <option value="">Select gender</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                    <option value="other">Other</option>
+
+// ─── Step 3 — Location ────────────────────────────────────────────────────────
+const LOC_STATUS_META: Record<string, { color: string; icon: string }> = {
+    idle: { color: "neutral", icon: "📍" },
+    requesting: { color: "info", icon: "🔐" },
+    detecting: { color: "info", icon: "🛰️" },
+    detected: { color: "success", icon: "✅" },
+    denied: { color: "warning", icon: "🚫" },
+    unsupported: { color: "warning", icon: "⚠️" },
+    error: { color: "error", icon: "❌" },
+};
+
+const S3 = ({ fd, errors, inp, set, loc }: any) => {
+    const meta = LOC_STATUS_META[loc.status] ?? LOC_STATUS_META.idle;
+    const isLoading = loc.status === "requesting" || loc.status === "detecting";
+    return (
+        <div className="rg-step">
+            <StepHeader icon="📍" title="Where are you based?" subtitle="We'll use this to find matches near you. You can edit anything." />
+
+            {/* Location detection card */}
+            <div className={`loc-card loc-card--${meta.color}`}>
+                <div className="loc-card-left">
+                    <span className="loc-card-icon">{isLoading ? <span className="rg-spinner dark" /> : meta.icon}</span>
+                </div>
+                <div className="loc-card-body">
+                    <p className="loc-card-msg">{loc.msg || "We'll auto-detect your location."}</p>
+                </div>
+                <button type="button" className="loc-retry-btn" onClick={loc.detect} disabled={isLoading}>
+                    {loc.status === "detected" ? "Re-detect" : "Detect"}
+                </button>
+            </div>
+
+            <FieldGroup label="Country" error={errors.country}>
+                <select className="rg-input" name="country" value={fd.country} onChange={inp}>
+                    <option value="">Select country</option>
+                    {AFRICAN_COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
-                {errors.gender && (
-                    <span className="error-message">{errors.gender}</span>
-                )}
-            </div>
+            </FieldGroup>
 
-            <div className="form-group">
-                <label>Looking For *</label>
-                <select
-                    name="lookingFor"
-                    value={formData.lookingFor}
-                    onChange={handleInputChange}
-                    className={errors.lookingFor ? "input-error" : ""}
-                >
-                    <option value="">Select preference</option>
-                    <option value="men">Men</option>
-                    <option value="women">Women</option>
-                    <option value="both">Both</option>
-                </select>
-                {errors.lookingFor && (
-                    <span className="error-message">{errors.lookingFor}</span>
-                )}
+            <div className="rg-row">
+                <FieldGroup label="State / Province" error={errors.state}>
+                    <input className={`rg-input ${loc.status === "detected" && fd.state ? "rg-input--auto" : ""}`} name="state" value={fd.state} onChange={inp} placeholder="e.g. Lagos State" />
+                </FieldGroup>
+                <FieldGroup label="City" error={errors.city}>
+                    <input className={`rg-input ${loc.status === "detected" && fd.city ? "rg-input--auto" : ""}`} name="city" value={fd.city} onChange={inp} placeholder="e.g. Lagos" />
+                </FieldGroup>
             </div>
         </div>
+    );
+};
 
-        <div className="form-group">
-            <label>Country *</label>
-            <select
-                name="country"
-                value={formData.country}
-                onChange={handleInputChange}
-                className={errors.country ? "input-error" : ""}
-            >
-                <option value="">Select country</option>
-                <option value="Nigeria">Nigeria</option>
-                <option value="Ghana">Ghana</option>
-                <option value="Kenya">Kenya</option>
-                <option value="South Africa">South Africa</option>
-                <option value="Egypt">Egypt</option>
-            </select>
-            {errors.country && (
-                <span className="error-message">{errors.country}</span>
-            )}
-        </div>
 
-        <div className="form-row">
-            <div className="form-group">
-                <label>State/Province *</label>
-                <input
-                    type="text"
-                    name="state"
-                    value={formData.state}
-                    onChange={handleInputChange}
-                    placeholder="Lagos"
-                    className={errors.state ? "input-error" : ""}
-                />
-                {errors.state && (
-                    <span className="error-message">{errors.state}</span>
-                )}
+// ─── Step 4 — Profile ─────────────────────────────────────────────────────────
+const EDUCATION_OPTS = [
+    { v: "high_school", label: "High School" },
+    { v: "some_college", label: "Some College" },
+    { v: "bachelors", label: "Bachelor's" },
+    { v: "masters", label: "Master's" },
+    { v: "phd", label: "PhD" },
+];
+const LANG_OPTS = ["English", "French", "Arabic", "Hausa", "Yoruba", "Igbo", "Swahili", "Zulu", "Amharic", "Portuguese"];
+
+const S4 = ({ fd, errors, inp, set, preview, fileRef, onPhoto, toggleArr }: any) => (
+    <div className="rg-step">
+        <StepHeader icon="📸" title="Build your profile" subtitle="Great profiles get 3× more matches. Be authentic!" />
+
+        {/* Photo upload */}
+        <FieldGroup label="Profile photo" error={errors.profilePicture} hint="Pick your best, most recent photo.">
+            <div className="photo-upload-area" onClick={() => fileRef.current?.click()}>
+                {preview
+                    ? <img src={preview} alt="Preview" className="photo-preview-img" />
+                    : <div className="photo-upload-placeholder"><span>📸</span><p>Tap to upload</p><small>JPG, PNG — max 5 MB</small></div>
+                }
+                {preview && <div className="photo-overlay">Change photo</div>}
             </div>
+            <input ref={fileRef} type="file" accept="image/*" onChange={onPhoto} style={{ display: "none" }} />
+        </FieldGroup>
 
-            <div className="form-group">
-                <label>City *</label>
-                <input
-                    type="text"
-                    name="city"
-                    value={formData.city}
-                    onChange={handleInputChange}
-                    placeholder="Ikoyi"
-                    className={errors.city ? "input-error" : ""}
-                />
-                {errors.city && (
-                    <span className="error-message">{errors.city}</span>
-                )}
-            </div>
-        </div>
-    </div>
-);
+        <FieldGroup label="About me" error={errors.aboutMe} hint="Write 20–300 characters. Be genuine.">
+            <textarea className="rg-input rg-textarea" name="aboutMe" value={fd.aboutMe} onChange={inp}
+                placeholder="e.g. Lagos-based architect who loves jazz, road trips, and building things — including great conversations." rows={4} maxLength={300} />
+            <span className="rg-char-count">{fd.aboutMe.length}/300</span>
+        </FieldGroup>
 
-const Step3 = ({
-    formData,
-    errors,
-    handleInputChange,
-    previewImage,
-    fileInputRef,
-    handlePhotoUpload,
-    handleLanguageToggle,
-}: any) => (
-    <div className="step-content">
-        <h2 className="step-title">Profile Information</h2>
-        <p className="step-subtitle">Complete your profile</p>
-
-        <div className="photo-upload-section">
-            <label>Profile Picture *</label>
-            <div className="photo-upload-container">
-                {previewImage ? (
-                    <div className="photo-preview">
-                        <img src={previewImage} alt="Profile preview" />
-                        <button
-                            type="button"
-                            className="btn-change-photo"
-                            onClick={() => fileInputRef.current?.click()}
-                        >
-                            Change Photo
-                        </button>
-                    </div>
-                ) : (
-                    <div
-                        className="photo-upload-box"
-                        onClick={() => fileInputRef.current?.click()}
-                    >
-                        <div className="upload-icon">📸</div>
-                        <p>Click to upload your profile picture</p>
-                        <span>JPG, PNG or GIF (Max 5MB)</span>
-                    </div>
-                )}
-            </div>
-            <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handlePhotoUpload}
-                style={{ display: "none" }}
-            />
-            {errors.profilePicture && (
-                <span className="error-message">{errors.profilePicture}</span>
-            )}
-        </div>
-
-        <div className="form-group">
-            <label>About Me *</label>
-            <textarea
-                name="aboutMe"
-                value={formData.aboutMe}
-                onChange={handleInputChange}
-                placeholder="Tell us about yourself... e.g., I'm a software developer from Lagos who enjoys travelling and meeting new people."
-                rows={4}
-                className={errors.aboutMe ? "input-error" : ""}
-            />
-            {errors.aboutMe && (
-                <span className="error-message">{errors.aboutMe}</span>
-            )}
-        </div>
-
-        <div className="form-row">
-            <div className="form-group">
-                <label>Occupation *</label>
-                <input
-                    type="text"
-                    name="occupation"
-                    value={formData.occupation}
-                    onChange={handleInputChange}
-                    placeholder="Software Developer"
-                    className={errors.occupation ? "input-error" : ""}
-                />
-                {errors.occupation && (
-                    <span className="error-message">{errors.occupation}</span>
-                )}
-            </div>
-
-            <div className="form-group">
-                <label>Education Level *</label>
-                <select
-                    name="education"
-                    value={formData.education}
-                    onChange={handleInputChange}
-                    className={errors.education ? "input-error" : ""}
-                >
-                    <option value="">Select education level</option>
-                    <option value="high_school">High School</option>
-                    <option value="bachelors">Bachelor's Degree</option>
-                    <option value="masters">Master's Degree</option>
-                    <option value="phd">PhD</option>
-                </select>
-                {errors.education && (
-                    <span className="error-message">{errors.education}</span>
-                )}
-            </div>
-        </div>
-
-        <div className="form-group">
-            <label>Languages Spoken *</label>
-            <div className="languages-grid">
-                {["English", "French", "Hausa", "Yoruba", "Swahili", "Zulu"].map(
-                    (lang) => (
-                        <label key={lang} className="checkbox-label">
-                            <input
-                                type="checkbox"
-                                checked={formData.languages.includes(lang)}
-                                onChange={() => handleLanguageToggle(lang)}
-                            />
-                            <span>{lang}</span>
-                        </label>
-                    )
-                )}
-            </div>
-            {errors.languages && (
-                <span className="error-message">{errors.languages}</span>
-            )}
-        </div>
-    </div>
-);
-
-const Step4 = ({
-    formData,
-    errors,
-    interestsOptions,
-    handleInterestToggle,
-}: any) => (
-    <div className="step-content">
-        <h2 className="step-title">Your Interests</h2>
-        <p className="step-subtitle">Select the activities you enjoy *</p>
-
-        <div className="interests-grid">
-            {interestsOptions.map((interest: string) => (
-                <label key={interest} className="interest-card">
-                    <input
-                        type="checkbox"
-                        checked={formData.interests.includes(interest)}
-                        onChange={() => handleInterestToggle(interest)}
-                    />
-                    <span className="interest-label">{interest}</span>
-                </label>
-            ))}
-        </div>
-
-        {errors.interests && (
-            <span className="error-message">{errors.interests}</span>
-        )}
-    </div>
-);
-
-const Step5 = ({ formData, errors, handleInputChange }: any) => (
-    <div className="step-content">
-        <h2 className="step-title">Match Preferences</h2>
-        <p className="step-subtitle">Help us find the right match for you</p>
-
-        <div className="form-group">
-            <label>Preferred Age Range *</label>
-            <div className="age-range-container">
-                <div className="age-input">
-                    <label>Minimum Age</label>
-                    <input
-                        type="number"
-                        name="minAge"
-                        value={formData.minAge}
-                        onChange={handleInputChange}
-                        min="18"
-                        max="80"
-                        className={errors.minAge ? "input-error" : ""}
-                    />
+        <div className="rg-row">
+            <FieldGroup label="Occupation" error={errors.occupation}>
+                <input className="rg-input" name="occupation" value={fd.occupation} onChange={inp} placeholder="e.g. Software Engineer" />
+            </FieldGroup>
+            <FieldGroup label="Education" error={errors.education}>
+                <div className="pill-group">
+                    {EDUCATION_OPTS.map(o => (
+                        <button key={o.v} type="button" className={`pill ${fd.education === o.v ? "selected" : ""}`} onClick={() => set("education", o.v)}>{o.label}</button>
+                    ))}
                 </div>
-                <span className="age-separator">-</span>
-                <div className="age-input">
-                    <label>Maximum Age</label>
-                    <input
-                        type="number"
-                        name="maxAge"
-                        value={formData.maxAge}
-                        onChange={handleInputChange}
-                        min="18"
-                        max="80"
-                        className={errors.maxAge ? "input-error" : ""}
-                    />
-                </div>
-            </div>
-            {errors.minAge && (
-                <span className="error-message">{errors.minAge}</span>
-            )}
-            {errors.maxAge && (
-                <span className="error-message">{errors.maxAge}</span>
-            )}
+            </FieldGroup>
         </div>
 
-        <div className="form-group">
-            <label>Preferred Country *</label>
-            <select
-                name="preferredCountry"
-                value={formData.preferredCountry}
-                onChange={handleInputChange}
-                className={errors.preferredCountry ? "input-error" : ""}
-            >
-                <option value="">Select country</option>
-                <option value="Nigeria">Nigeria</option>
-                <option value="Ghana">Ghana</option>
-                <option value="Kenya">Kenya</option>
-                <option value="South Africa">South Africa</option>
-                <option value="Anywhere in Africa">Anywhere in Africa</option>
-            </select>
-            {errors.preferredCountry && (
-                <span className="error-message">{errors.preferredCountry}</span>
-            )}
-        </div>
-
-        <div className="form-group">
-            <label>Preferred Distance *</label>
-            <select
-                name="preferredDistance"
-                value={formData.preferredDistance}
-                onChange={handleInputChange}
-                className={errors.preferredDistance ? "input-error" : ""}
-            >
-                <option value="">Select distance</option>
-                <option value="within_10km">Within 10 km</option>
-                <option value="within_50km">Within 50 km</option>
-                <option value="anywhere_in_africa">Anywhere in Africa</option>
-            </select>
-            {errors.preferredDistance && (
-                <span className="error-message">{errors.preferredDistance}</span>
-            )}
-        </div>
-    </div>
-);
-
-const Step6 = ({
-    formData,
-    errors,
-    handleInputChange,
-}: any) => (
-    <div className="step-content">
-        <h2 className="step-title">Lifestyle & Preferences</h2>
-        <p className="step-subtitle">Help us understand your lifestyle</p>
-
-        <div className="form-group">
-            <label>What are you looking for? *</label>
-            <div className="options-grid">
-                {[
-                    "Serious relationship",
-                    "Marriage",
-                    "Long-term dating",
-                    "Casual dating",
-                    "Friendship",
-                    "Networking",
-                ].map((option) => (
-                    <label key={option} className="radio-label">
-                        <input
-                            type="radio"
-                            name="relationshipGoal"
-                            value={option}
-                            checked={formData.relationshipGoal === option}
-                            onChange={handleInputChange}
-                        />
-                        <span>{option}</span>
-                    </label>
+        <FieldGroup label="Languages spoken" error={errors.languages} hint="Select all that apply.">
+            <div className="pill-group">
+                {LANG_OPTS.map(l => (
+                    <button key={l} type="button" className={`pill ${fd.languages.includes(l) ? "selected" : ""}`} onClick={() => toggleArr("languages", l)}>{l}</button>
                 ))}
             </div>
-            {errors.relationshipGoal && (
-                <span className="error-message">{errors.relationshipGoal}</span>
-            )}
-        </div>
+        </FieldGroup>
+    </div>
+);
 
-        <div className="form-row">
-            <div className="form-group">
-                <label>Do you have children? *</label>
-                <select
-                    name="hasChildren"
-                    value={formData.hasChildren}
-                    onChange={handleInputChange}
-                    className={errors.hasChildren ? "input-error" : ""}
-                >
-                    <option value="">Select</option>
-                    <option value="yes">Yes</option>
-                    <option value="no">No</option>
-                    <option value="prefer_not_to_say">Prefer not to say</option>
-                </select>
-                {errors.hasChildren && (
-                    <span className="error-message">{errors.hasChildren}</span>
-                )}
+
+// ─── Step 5 — Lifestyle ───────────────────────────────────────────────────────
+const INTERESTS_OPTS = [
+    { v: "Music", icon: "🎵" }, { v: "Sports", icon: "⚽" }, { v: "Movies", icon: "🎬" }, { v: "Gaming", icon: "🎮" },
+    { v: "Cooking", icon: "🍳" }, { v: "Reading", icon: "📚" }, { v: "Travel", icon: "✈️" }, { v: "Fashion", icon: "👗" },
+    { v: "Tech", icon: "💻" }, { v: "Fitness", icon: "💪" }, { v: "Art", icon: "🎨" }, { v: "Photography", icon: "📷" },
+    { v: "Dancing", icon: "💃" }, { v: "Entrepreneurship", icon: "🚀" }, { v: "Nature", icon: "🌿" }, { v: "Spirituality", icon: "🙏" },
+];
+const SMOKE_OPTS = [{ v: "never", label: "Never" }, { v: "socially", label: "Socially" }, { v: "regularly", label: "Regularly" }];
+const DRINK_OPTS = [{ v: "never", label: "Never" }, { v: "socially", label: "Socially" }, { v: "frequently", label: "Frequently" }];
+
+const S5 = ({ fd, errors, set, toggleArr }: any) => (
+    <div className="rg-step">
+        <StepHeader icon="🌿" title="Your vibe & lifestyle" subtitle="Help matches understand who you are beyond your photos." />
+        <FieldGroup label="Interests — pick up to 8" error={errors.interests} hint="These appear on your profile as conversation starters.">
+            <div className="interest-grid">
+                {INTERESTS_OPTS.map(o => (
+                    <button key={o.v} type="button"
+                        className={`interest-chip ${fd.interests.includes(o.v) ? "selected" : ""}`}
+                        onClick={() => {
+                            if (!fd.interests.includes(o.v) && fd.interests.length >= 8) return;
+                            toggleArr("interests", o.v);
+                        }}
+                    >
+                        <span>{o.icon}</span>{o.v}
+                        {fd.interests.includes(o.v) && <span className="chip-check">✓</span>}
+                    </button>
+                ))}
             </div>
-
-            <div className="form-group">
-                <label>Would you like children in the future? *</label>
-                <select
-                    name="wantsChildren"
-                    value={formData.wantsChildren}
-                    onChange={handleInputChange}
-                    className={errors.wantsChildren ? "input-error" : ""}
-                >
-                    <option value="">Select</option>
-                    <option value="yes">Yes</option>
-                    <option value="no">No</option>
-                    <option value="maybe">Maybe</option>
-                </select>
-                {errors.wantsChildren && (
-                    <span className="error-message">{errors.wantsChildren}</span>
-                )}
-            </div>
-        </div>
-
-        <div className="form-row">
-            <div className="form-group">
-                <label>Do you smoke? *</label>
-                <select
-                    name="smoking"
-                    value={formData.smoking}
-                    onChange={handleInputChange}
-                    className={errors.smoking ? "input-error" : ""}
-                >
-                    <option value="">Select</option>
-                    <option value="never">Never</option>
-                    <option value="occasionally">Occasionally</option>
-                    <option value="regularly">Regularly</option>
-                </select>
-                {errors.smoking && (
-                    <span className="error-message">{errors.smoking}</span>
-                )}
-            </div>
-
-            <div className="form-group">
-                <label>Do you drink alcohol? *</label>
-                <select
-                    name="drinking"
-                    value={formData.drinking}
-                    onChange={handleInputChange}
-                    className={errors.drinking ? "input-error" : ""}
-                >
-                    <option value="">Select</option>
-                    <option value="never">Never</option>
-                    <option value="socially">Socially</option>
-                    <option value="frequently">Frequently</option>
-                </select>
-                {errors.drinking && (
-                    <span className="error-message">{errors.drinking}</span>
-                )}
-            </div>
-        </div>
-
-        <div className="form-row">
-            <div className="form-group">
-                <label>Religion *</label>
-                <select
-                    name="religion"
-                    value={formData.religion}
-                    onChange={handleInputChange}
-                    className={errors.religion ? "input-error" : ""}
-                >
-                    <option value="">Select</option>
-                    <option value="Christian">Christian</option>
-                    <option value="Muslim">Muslim</option>
-                    <option value="Traditional">Traditional</option>
-                    <option value="Other">Other</option>
-                    <option value="Prefer not to say">Prefer not to say</option>
-                </select>
-                {errors.religion && (
-                    <span className="error-message">{errors.religion}</span>
-                )}
-            </div>
-
-            <div className="form-group">
-                <label>How important is religion in your life? *</label>
-                <select
-                    name="religionImportance"
-                    value={formData.religionImportance}
-                    onChange={handleInputChange}
-                    className={errors.religionImportance ? "input-error" : ""}
-                >
-                    <option value="">Select</option>
-                    <option value="very_important">Very important</option>
-                    <option value="somewhat_important">Somewhat important</option>
-                    <option value="not_important">Not important</option>
-                </select>
-                {errors.religionImportance && (
-                    <span className="error-message">{errors.religionImportance}</span>
-                )}
-            </div>
-        </div>
-
-        <div className="form-group">
-            <label>Your biggest relationship value? *</label>
-            <select
-                name="relationshipValue"
-                value={formData.relationshipValue}
-                onChange={handleInputChange}
-                className={errors.relationshipValue ? "input-error" : ""}
-            >
-                <option value="">Select</option>
-                <option value="trust">Trust</option>
-                <option value="loyalty">Loyalty</option>
-                <option value="communication">Communication</option>
-                <option value="respect">Respect</option>
-                <option value="honesty">Honesty</option>
-            </select>
-            {errors.relationshipValue && (
-                <span className="error-message">{errors.relationshipValue}</span>
-            )}
+        </FieldGroup>
+        <div className="rg-row">
+            <FieldGroup label="Smoking" error={errors.smoking}>
+                <PillSelect options={SMOKE_OPTS.map(o => ({ v: o.v, label: o.label }))} value={fd.smoking} onChange={(v: string) => set("smoking", v)} />
+            </FieldGroup>
+            <FieldGroup label="Drinking" error={errors.drinking}>
+                <PillSelect options={DRINK_OPTS.map(o => ({ v: o.v, label: o.label }))} value={fd.drinking} onChange={(v: string) => set("drinking", v)} />
+            </FieldGroup>
         </div>
     </div>
 );
 
-const Step7 = ({ formData }: any) => (
-    <div className="step-content verification-step">
-        <h2 className="step-title">Verify Your Email</h2>
-        <p className="step-subtitle">Complete your registration</p>
 
-        <div className="verification-box">
-            <div className="verification-icon">✉️</div>
-            <p>We've sent a verification link to:</p>
-            <p className="email-display">{formData.email}</p>
-            <p>Click the link in your email to verify your account and start meeting people!</p>
+// ─── Step 6 — Goals ───────────────────────────────────────────────────────────
+const GOAL_OPTS = [
+    { v: "Marriage", label: "Marriage", icon: "💍" },
+    { v: "Serious relationship", label: "Serious relationship", icon: "❤️" },
+    { v: "Long-term dating", label: "Long-term dating", icon: "🌹" },
+    { v: "Casual dating", label: "Casual dating", icon: "☀️" },
+    { v: "Friendship", label: "Friendship first", icon: "🤝" },
+    { v: "Networking", label: "Networking", icon: "🔗" },
+];
+const REL_VAL_OPTS = [
+    { v: "trust", label: "Trust" }, { v: "loyalty", label: "Loyalty" },
+    { v: "communication", label: "Communication" }, { v: "respect", label: "Respect" },
+    { v: "honesty", label: "Honesty" }, { v: "growth", label: "Personal growth" },
+];
+const RELIGION_OPTS = [
+    { v: "Christian", label: "Christian" }, { v: "Muslim", label: "Muslim" },
+    { v: "Traditional", label: "Traditional" }, { v: "Agnostic", label: "Agnostic" },
+    { v: "Atheist", label: "Atheist" }, { v: "Other", label: "Other" },
+    { v: "Prefer not to say", label: "Prefer not to say" },
+];
+const IMP_OPTS = [{ v: "very_important", label: "Very important" }, { v: "somewhat_important", label: "Somewhat" }, { v: "not_important", label: "Not important" }];
+const CHILDREN_OPTS = [{ v: "yes", label: "Yes" }, { v: "no", label: "No" }, { v: "prefer_not_to_say", label: "Prefer not to say" }];
+const WANT_CHILDREN_OPTS = [{ v: "yes", label: "Yes" }, { v: "no", label: "No" }, { v: "maybe", label: "Maybe" }];
+const PREF_COUNTRY_OPTS = AFRICAN_COUNTRIES.concat(["Anywhere in Africa"]);
+const DIST_OPTS = [{ v: "within_10km", label: "Within 10 km" }, { v: "within_50km", label: "Within 50 km" }, { v: "within_country", label: "My country" }, { v: "anywhere_in_africa", label: "Anywhere in Africa" }];
 
-            <div className="verification-info">
-                <p>
-                    <strong>Didn't receive the email?</strong> Check your spam folder or
-                    click below to resend.
-                </p>
-                <button className="btn-resend">Resend Verification Email</button>
+const S6 = ({ fd, errors, inp, set }: any) => (
+    <div className="rg-step">
+        <StepHeader icon="💞" title="What are you looking for?" subtitle="Honesty here leads to better matches. No judgment." />
+        <FieldGroup label="I'm here for…" error={errors.relationshipGoal}>
+            <div className="opt-grid col-3">
+                {GOAL_OPTS.map(o => <OptionCard key={o.v} {...o} selected={fd.relationshipGoal === o.v} onClick={(v: string) => set("relationshipGoal", v)} />)}
             </div>
+        </FieldGroup>
+        <div className="rg-row">
+            <FieldGroup label="Do you have children?" error={errors.hasChildren}>
+                <PillSelect options={CHILDREN_OPTS} value={fd.hasChildren} onChange={(v: string) => set("hasChildren", v)} />
+            </FieldGroup>
+            <FieldGroup label="Want children someday?" error={errors.wantsChildren}>
+                <PillSelect options={WANT_CHILDREN_OPTS} value={fd.wantsChildren} onChange={(v: string) => set("wantsChildren", v)} />
+            </FieldGroup>
         </div>
+        <div className="rg-row">
+            <FieldGroup label="Religion" error={errors.religion}>
+                <select className="rg-input" name="religion" value={fd.religion} onChange={inp}>
+                    <option value="">Select</option>
+                    {RELIGION_OPTS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+                </select>
+            </FieldGroup>
+            <FieldGroup label="How important is religion to you?" error={errors.religionImportance}>
+                <PillSelect options={IMP_OPTS} value={fd.religionImportance} onChange={(v: string) => set("religionImportance", v)} />
+            </FieldGroup>
+        </div>
+        <FieldGroup label="Biggest relationship value">
+            <PillSelect options={REL_VAL_OPTS} value={fd.relationshipValue} onChange={(v: string) => set("relationshipValue", v)} multi={false} />
+        </FieldGroup>
+        <div className="rg-row">
+            <FieldGroup label="Preferred match location" error={errors.preferredCountry}>
+                <select className="rg-input" name="preferredCountry" value={fd.preferredCountry} onChange={inp}>
+                    <option value="">Select</option>
+                    {PREF_COUNTRY_OPTS.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+            </FieldGroup>
+            <FieldGroup label="Max distance" error={errors.preferredDistance}>
+                <PillSelect options={DIST_OPTS} value={fd.preferredDistance} onChange={(v: string) => set("preferredDistance", v)} />
+            </FieldGroup>
+        </div>
+        <FieldGroup label="Preferred age range">
+            <div className="age-range-row">
+                <input className="rg-input" type="number" name="minAge" value={fd.minAge} onChange={inp} min={18} max={80} />
+                <span className="age-sep">to</span>
+                <input className="rg-input" type="number" name="maxAge" value={fd.maxAge} onChange={inp} min={18} max={80} />
+            </div>
+        </FieldGroup>
     </div>
 );
+
+
+// ─── Step 7 — Verify ──────────────────────────────────────────────────────────
+const S7 = ({ fd, navigate }: any) => {
+    const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+    const [status, setStatus] = useState<"idle" | "verifying" | "success" | "error">("idle");
+    const [msg, setMsg] = useState("");
+    const [cooldown, setCooldown] = useState(0);
+    const refs = useRef<(HTMLInputElement | null)[]>([]);
+
+    useEffect(() => {
+        if (cooldown <= 0) return;
+        const t = setTimeout(() => setCooldown(c => c - 1), 1000);
+        return () => clearTimeout(t);
+    }, [cooldown]);
+
+    const onInput = (i: number, v: string) => {
+        if (!/^\d*$/.test(v)) return;
+        const a = [...otp]; a[i] = v.slice(-1); setOtp(a);
+        if (v && i < 5) refs.current[i + 1]?.focus();
+    };
+    const onKey = (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Backspace" && !otp[i] && i > 0) refs.current[i - 1]?.focus();
+    };
+    const onPaste = (e: React.ClipboardEvent) => {
+        e.preventDefault();
+        const digits = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+        const a = [...otp]; digits.split("").forEach((d, i) => { a[i] = d; }); setOtp(a);
+        refs.current[Math.min(digits.length, 5)]?.focus();
+    };
+
+    const verify = async () => {
+        const code = otp.join("");
+        if (code.length < 6) { setStatus("error"); setMsg("Enter the full 6-digit code."); return; }
+        setStatus("verifying"); setMsg("");
+        try {
+            await authAPI.verifyOtp(fd.email, code);
+            setStatus("success"); setMsg("Email verified! 🎉 Welcome to DateClone!");
+            setTimeout(() => navigate("/discover"), 1800);
+        } catch (err: any) { setStatus("error"); setMsg(err.message || "Invalid code."); }
+    };
+
+    const resend = async () => {
+        try {
+            await authAPI.resendVerification(fd.email);
+            setCooldown(60); setStatus("idle"); setMsg("New code sent!");
+            setOtp(["", "", "", "", "", ""]); refs.current[0]?.focus();
+        } catch (err: any) { setMsg(err.message || "Failed to resend."); }
+    };
+
+    return (
+        <div className="rg-step verify-step">
+            <div className="verify-icon">✉️</div>
+            <h2 className="step-title">Check your inbox</h2>
+            <p className="step-subtitle">We sent a 6-digit code to <strong>{fd.email}</strong></p>
+
+            {status !== "success" ? (
+                <>
+                    <div className="otp-inputs" onPaste={onPaste}>
+                        {otp.map((d, i) => (
+                            <input key={i} ref={el => { refs.current[i] = el; }} type="text" inputMode="numeric"
+                                maxLength={1} value={d} autoFocus={i === 0}
+                                onChange={e => onInput(i, e.target.value)}
+                                onKeyDown={e => onKey(i, e)}
+                                className={`otp-box ${status === "error" ? "otp-error" : ""}`} />
+                        ))}
+                    </div>
+                    {msg && <p className={`otp-message ${status === "error" ? "otp-message-error" : "otp-message-info"}`}>{msg}</p>}
+                    <button className="rg-btn-next" style={{ width: "100%" }} onClick={verify} disabled={status === "verifying"}>
+                        {status === "verifying" ? <><span className="rg-spinner" /> Verifying…</> : "Verify Email →"}
+                    </button>
+                    <p className="resend-hint">
+                        Didn't get it? Check spam or{" "}
+                        <button type="button" className="resend-link" onClick={resend} disabled={cooldown > 0}>
+                            {cooldown > 0 ? `Resend in ${cooldown}s` : "resend code"}
+                        </button>
+                    </p>
+                </>
+            ) : (
+                <div className="verify-success">
+                    <div className="success-icon">🎉</div>
+                    <p className="otp-message otp-message-success">{msg}</p>
+                    <p style={{ color: "#888", fontSize: "0.88rem", marginTop: 8 }}>Redirecting to your matches…</p>
+                </div>
+            )}
+        </div>
+    );
+};
 
 export default Register;

@@ -1,0 +1,146 @@
+/* ── Edit Profile ──────────────────────────────────────────────────────────── */
+.edit-profile-page {
+    flex: 1;
+    padding: 24px;
+    max-width: 700px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.edit-profile-card {
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.07);
+    padding: 32px;
+}
+
+.edit-profile-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.ep-back {
+    background: none;
+    border: none;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #ff1744;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 8px;
+    transition: background 0.2s;
+}
+
+.ep-back:hover {
+    background: rgba(255, 23, 68, 0.07);
+}
+
+.edit-profile-header h1 {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #111;
+}
+
+.ep-success {
+    background: rgba(76, 175, 80, 0.08);
+    border: 1px solid rgba(76, 175, 80, 0.25);
+    color: #2e7d32;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+}
+
+.ep-error {
+    background: rgba(255, 23, 68, 0.06);
+    border: 1px solid rgba(255, 23, 68, 0.2);
+    color: #c62828;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+}
+
+.ep-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.ep-section-title {
+    font-size: 0.8rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #ff1744;
+    padding-top: 8px;
+    border-top: 1px solid #f0f0f0;
+}
+
+.ep-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+}
+
+.ep-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ep-field label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #666;
+}
+
+.ep-field input,
+.ep-field select,
+.ep-field textarea {
+    padding: 11px 13px;
+    border: 2px solid #e8e8e8;
+    border-radius: 10px;
+    font-size: 0.92rem;
+    font-family: inherit;
+    background: #fafafa;
+    color: #333;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.ep-field input:focus,
+.ep-field select:focus,
+.ep-field textarea:focus {
+    border-color: #ff1744;
+    box-shadow: 0 0 0 3px rgba(255, 23, 68, 0.1);
+    background: white;
+}
+
+.ep-field textarea {
+    resize: vertical;
+    min-height: 100px;
+}
+
+.ep-submit {
+    width: 100%;
+    padding: 14px;
+    font-size: 1rem;
+    margin-top: 8px;
+}
+
+@media (max-width: 600px) {
+    .edit-profile-card {
+        padding: 20px 16px;
+    }
+
+    .ep-row {
+        grid-template-columns: 1fr;
+    }
+}

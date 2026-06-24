@@ -260,4 +260,21 @@ router.post("/block", authenticateToken, async (req, res) => {
     }
 });
 
+// POST: Report User
+router.post("/report/:userId", authenticateToken, async (req, res) => {
+    // Delegate to profileRoutes logic — kept here for convenience
+    // (the full implementation lives in profileRoutes.js)
+    res.redirect(307, `/api/profile/${req.params.userId}/report`);
+});
+
+// GET: Member count (for homepage stats)
+router.get("/count", async (_req, res) => {
+    try {
+        const count = await User.countDocuments({ isMember: true, isActive: true, isBanned: false });
+        res.json({ success: true, count });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 export default router;

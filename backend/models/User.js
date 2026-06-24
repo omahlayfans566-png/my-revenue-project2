@@ -1,88 +1,118 @@
 import mongoose from "mongoose";
 
+const privacySettingsSchema = new mongoose.Schema({
+    showOnlineStatus: { type: Boolean, default: true },
+    showLastSeen: { type: Boolean, default: true },
+    showLocation: { type: Boolean, default: true },
+    showAge: { type: Boolean, default: true },
+    profileVisible: { type: Boolean, default: true }, // appears in discover / search
+    showInSearch: { type: Boolean, default: true },
+    allowMessageFrom: { type: String, enum: ["everyone", "matches_only"], default: "matches_only" },
+}, { _id: false });
+
 const userSchema = new mongoose.Schema(
     {
-        // Step 1: Account Information
-        firstName: { type: String, required: true },
-        lastName: { type: String, required: true },
-        username: { type: String, required: true, unique: true },
-        email: { type: String, required: true, unique: true },
-        phone: String,
+        // ── Account ──────────────────────────────────────────────────────────
+        firstName: { type: String, required: true, trim: true },
+        lastName: { type: String, required: true, trim: true },
+        username: { type: String, required: true, unique: true, trim: true, lowercase: true },
+        email: { type: String, required: true, unique: true, trim: true, lowercase: true },
+        phone: { type: String, trim: true },
         password: { type: String, required: true },
-        profilePicture: String,
 
-        // Step 2: Personal Information
+        // ── Personal ─────────────────────────────────────────────────────────
         dateOfBirth: Date,
         age: Number,
         gender: { type: String, enum: ["male", "female", "other"] },
         lookingFor: { type: String, enum: ["men", "women", "both"] },
+
+        // ── Location ─────────────────────────────────────────────────────────
         country: String,
         state: String,
         city: String,
         latitude: Number,
         longitude: Number,
 
-        // Step 3: Profile Information
+        // ── Profile ──────────────────────────────────────────────────────────
+        profilePicture: String,
+        photos: [String],
         aboutMe: String,
+        bio: String,   // alias kept for compatibility
         occupation: String,
         education: {
             type: String,
-            enum: ["high_school", "bachelors", "masters", "phd"],
+            enum: ["high_school", "some_college", "bachelors", "masters", "phd", "other"],
         },
         languages: [String],
 
-        // Step 4: Interests
+        // ── Interests & Lifestyle ─────────────────────────────────────────────
         interests: [String],
+        smoking: { type: String, enum: ["never", "socially", "occasionally", "regularly"] },
+        drinking: { type: String, enum: ["never", "socially", "frequently"] },
 
-        // Step 5: Match Preferences
+        // ── Match Preferences ─────────────────────────────────────────────────
         minAge: { type: Number, default: 18 },
-        maxAge: { type: Number, default: 80 },
+        maxAge: { type: Number, default: 50 },
         preferredCountry: String,
         preferredDistance: String,
 
-        // Step 6: Relationship & Lifestyle
+        // ── Relationship & Lifestyle Goals ────────────────────────────────────
         relationshipGoal: String,
         hasChildren: { type: String, enum: ["yes", "no", "prefer_not_to_say"] },
         wantsChildren: { type: String, enum: ["yes", "no", "maybe"] },
-        smoking: { type: String, enum: ["never", "occasionally", "regularly"] },
-        drinking: { type: String, enum: ["never", "socially", "frequently"] },
         religion: String,
-        religionImportance: {
-            type: String,
-            enum: ["very_important", "somewhat_important", "not_important"],
-        },
+        religionImportance: { type: String, enum: ["very_important", "somewhat_important", "not_important"] },
         relationshipValue: String,
 
-        // Verification
+        // ── Verification ─────────────────────────────────────────────────────
         emailVerified: { type: Boolean, default: false },
         verificationToken: String,
         verificationTokenExpires: Date,
 
-        // Premium Features
-        isPremium: { type: Boolean, default: false },
-        premiumTier: {
-            type: String,
-            enum: ["basic", "gold", "platinum"],
-            default: "basic",
-        },
-        premiumExpires: Date,
-        stripeCustomerId: String,
+        // ── Member status (set automatically on verification) ─────────────────
+        isMember: { type: Boolean, default: false },  // fully onboarded member
+        memberSince: Date,                                // timestamp of first activation
+        onboardingComplete: { type: Boolean, default: false },
 
-        // Profile Completion
-        profileCompletion: { type: Number, default: 0 },
-
-        // Account Status
+        // ── Account status ────────────────────────────────────────────────────
         isActive: { type: Boolean, default: true },
         isBanned: { type: Boolean, default: false },
         lastLogin: Date,
 
-        // Additional
-        bio: String,
-        photos: [String],
-        blocked: [mongoose.Schema.Types.ObjectId],
-        reported: [mongoose.Schema.Types.ObjectId],
+        // ── Profile completion score (0-100) ──────────────────────────────────
+        profileCompletion: { type: Number, default: 0 },
+
+        // ── Privacy settings ──────────────────────────────────────────────────
+        privacySettings: { type: privacySettingsSchema, default: () => ({}) },
+
+        // ── Premium ──────────────────────────────────────────────────────────
+        isPremium: { type: Boolean, default: false },
+        premiumTier: { type: String, enum: ["basic", "gold", "platinum"], default: "basic" },
+        premiumExpires: Date,
+        stripeCustomerId: String,
+
+        // ── Moderation ───────────────────────────────────────────────────────
+        reportCount: { type: Number, default: 0 },
+        flaggedForReview: { type: Boolean, default: false },
+        blocked: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+        reported: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     },
-    { timestamps: true }
+    {
+        timestamps: true,
+        toJSON: { virtuals: true },
+        toObject: { virtuals: true },
+    }
 );
+
+// ── Indexes for fast member lookup and matching ────────────────────────────────
+userSchema.index({ gender: 1, age: 1, country: 1 });
+userSchema.index({ isMember: 1, isActive: 1, isBanned: 1, emailVerified: 1 });
+userSchema.index({ latitude: 1, longitude: 1 });
+userSchema.index({ interests: 1 });
+
+// ── Virtual: full name ─────────────────────────────────────────────────────────
+userSchema.virtual("fullName").get(function () {
+    return `${this.firstName} ${this.lastName}`;
+});
 
 export const User = mongoose.model("User", userSchema);

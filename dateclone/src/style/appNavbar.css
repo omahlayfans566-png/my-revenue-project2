@@ -1,0 +1,362 @@
+/* ── App Navbar (authenticated) ─────────────────────────────────────────────── */
+.app-navbar {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255, 23, 68, 0.08);
+    box-shadow: 0 2px 20px rgba(0, 0, 0, 0.06);
+}
+
+.app-navbar-inner {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 0 24px;
+    height: 64px;
+    max-width: 1280px;
+    margin: 0 auto;
+}
+
+/* Logo */
+.app-nav-logo {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #ff1744;
+    text-decoration: none;
+    white-space: nowrap;
+    letter-spacing: -0.5px;
+}
+
+.app-nav-logo span {
+    font-size: 1.1rem;
+}
+
+/* Desktop links */
+.app-nav-links {
+    display: flex;
+    list-style: none;
+    gap: 4px;
+    margin: 0 auto;
+}
+
+.app-nav-links li {
+    list-style: none;
+}
+
+.app-nav-links a {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #666;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.app-nav-links a:hover {
+    background: rgba(255, 23, 68, 0.07);
+    color: #ff1744;
+}
+
+.app-nav-links a.active {
+    background: rgba(255, 23, 68, 0.1);
+    color: #ff1744;
+}
+
+.nav-icon {
+    font-size: 1rem;
+}
+
+/* Right side */
+.app-nav-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+/* Upgrade button */
+.app-nav-upgrade {
+    padding: 7px 16px;
+    background: linear-gradient(135deg, #ff1744, #ff4081);
+    color: white;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 0.82rem;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    box-shadow: 0 3px 12px rgba(255, 23, 68, 0.3);
+    white-space: nowrap;
+}
+
+.app-nav-upgrade:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 18px rgba(255, 23, 68, 0.4);
+}
+
+/* Profile dropdown trigger */
+.app-nav-profile {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 6px 12px;
+    border-radius: 50px;
+    border: 1.5px solid #e8e8e8;
+    background: white;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.app-nav-profile:hover {
+    border-color: #ff4081;
+    background: #fff5f7;
+}
+
+.nav-avatar {
+    border: 2px solid #ff4081 !important;
+}
+
+.nav-name {
+    font-weight: 600;
+    font-size: 0.88rem;
+    color: #333;
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.nav-chevron {
+    font-size: 0.6rem;
+    color: #999;
+}
+
+/* Dropdown */
+.app-nav-dropdown {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    background: white;
+    border: 1px solid #f0f0f0;
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12);
+    min-width: 190px;
+    overflow: hidden;
+    animation: dropIn 0.2s ease;
+    z-index: 999;
+}
+
+@keyframes dropIn {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.app-nav-dropdown a,
+.app-nav-dropdown button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    color: #333;
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: background 0.2s;
+    width: 100%;
+    text-align: left;
+    border: none;
+    background: none;
+    cursor: pointer;
+}
+
+.app-nav-dropdown a:hover,
+.app-nav-dropdown button:hover {
+    background: #fafafa;
+    color: #ff1744;
+}
+
+.dropdown-divider {
+    height: 1px;
+    background: #f0f0f0;
+    margin: 4px 0;
+}
+
+.dropdown-logout {
+    color: #ff1744 !important;
+    font-weight: 600 !important;
+}
+
+/* Hamburger (mobile) */
+.app-hamburger {
+    display: none;
+    flex-direction: column;
+    gap: 5px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+}
+
+.app-hamburger span {
+    width: 22px;
+    height: 2.5px;
+    background: #333;
+    border-radius: 2px;
+    transition: all 0.3s ease;
+    display: block;
+}
+
+.app-hamburger.open span:nth-child(1) {
+    transform: rotate(45deg) translate(5px, 5px);
+}
+
+.app-hamburger.open span:nth-child(2) {
+    opacity: 0;
+}
+
+.app-hamburger.open span:nth-child(3) {
+    transform: rotate(-45deg) translate(5px, -5px);
+}
+
+/* Mobile dropdown menu */
+.app-mobile-menu {
+    display: none;
+    flex-direction: column;
+    background: white;
+    border-top: 1px solid #f0f0f0;
+    padding: 12px 16px 16px;
+    gap: 4px;
+}
+
+.app-mobile-menu a,
+.app-mobile-menu button {
+    padding: 12px 16px;
+    border-radius: 10px;
+    text-decoration: none;
+    color: #333;
+    font-weight: 500;
+    font-size: 0.95rem;
+    transition: background 0.2s;
+    display: block;
+    border: none;
+    background: none;
+    cursor: pointer;
+    text-align: left;
+}
+
+.app-mobile-menu a:hover {
+    background: rgba(255, 23, 68, 0.07);
+    color: #ff1744;
+}
+
+.mobile-logout {
+    color: #ff1744 !important;
+    font-weight: 700 !important;
+}
+
+/* Bottom mobile nav (fixed bottom bar) */
+.app-bottom-nav {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: white;
+    border-top: 1px solid #f0f0f0;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+    z-index: 999;
+    padding: 6px 0;
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+.app-bottom-nav a {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 6px 4px;
+    text-decoration: none;
+    color: #999;
+    font-size: 0.68rem;
+    font-weight: 600;
+    transition: color 0.2s;
+}
+
+.app-bottom-nav a span:first-child {
+    font-size: 1.3rem;
+}
+
+.app-bottom-nav a.active {
+    color: #ff1744;
+}
+
+.app-bottom-nav a:hover {
+    color: #ff1744;
+}
+
+/* ── Responsive ────────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+    .app-nav-links {
+        display: none;
+    }
+
+    .app-nav-upgrade {
+        display: none;
+    }
+
+    .app-hamburger {
+        display: flex;
+    }
+
+    .app-mobile-menu {
+        display: flex;
+    }
+
+    .app-bottom-nav {
+        display: flex;
+    }
+
+    /* Add padding to page content so bottom nav doesn't overlap */
+    .page-wrapper {
+        padding-bottom: 70px;
+    }
+}
+
+@media (max-width: 480px) {
+    .app-navbar-inner {
+        padding: 0 16px;
+        height: 56px;
+    }
+
+    .app-nav-logo {
+        font-size: 1.2rem;
+    }
+
+    .nav-name {
+        display: none;
+    }
+
+    .nav-chevron {
+        display: none;
+    }
+
+    .app-nav-profile {
+        padding: 4px 8px;
+    }
+}

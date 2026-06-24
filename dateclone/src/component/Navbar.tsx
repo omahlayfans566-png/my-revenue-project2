@@ -5,60 +5,38 @@ import "../style/navbar.css";
 const Navbar = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const toggleMobileMenu = () => {
-    setMobileMenuOpen(!mobileMenuOpen);
-  };
-
-  const closeMobileMenu = () => {
-    setMobileMenuOpen(false);
-  };
-
   return (
     <nav className="navbar">
-      <div className="logo">DateClone</div>
+      <Link to="/" className="logo">DateClone 💕</Link>
 
-      {/* Desktop Navigation Links */}
+      {/* Desktop links */}
       <ul className="nav-links">
-        <li>Home</li>
-        <li>About</li>
-        <li>Members</li>
-        <li>Premium</li>
+        <li><Link to="/">Home</Link></li>
+        <li><Link to="/about">About</Link></li>
+        <li><Link to="/faq">FAQ</Link></li>
+        <li><Link to="/premium">Premium</Link></li>
       </ul>
 
-      {/* Desktop Navigation Buttons */}
       <div className="nav-buttons">
-        <Link to="/login" className="login-btn">
-          Login
-        </Link>
-        <Link to="/register" className="signup-btn">
-          Sign Up
-        </Link>
+        <Link to="/login" className="login-btn">Login</Link>
+        <Link to="/register" className="signup-btn">Sign Up</Link>
       </div>
 
-      {/* Hamburger Menu Button (Mobile Only) */}
       <button
         className={`hamburger-menu ${mobileMenuOpen ? "active" : ""}`}
-        onClick={toggleMobileMenu}
-        aria-label="Toggle mobile menu"
-        aria-expanded={mobileMenuOpen}
+        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        aria-label="Toggle menu"
       >
-        <span></span>
-        <span></span>
-        <span></span>
+        <span /><span /><span />
       </button>
 
-      {/* Mobile Navigation Menu */}
       <div className={`mobile-nav ${mobileMenuOpen ? "active" : ""}`}>
-        <li onClick={closeMobileMenu}>Home</li>
-        <li onClick={closeMobileMenu}>About</li>
-        <li onClick={closeMobileMenu}>Members</li>
-        <li onClick={closeMobileMenu}>Premium</li>
-        <Link to="/login" className="login-btn" onClick={closeMobileMenu}>
-          Login
-        </Link>
-        <Link to="/register" className="signup-btn" onClick={closeMobileMenu}>
-          Sign Up
-        </Link>
+        <Link to="/" onClick={() => setMobileMenuOpen(false)}>Home</Link>
+        <Link to="/about" onClick={() => setMobileMenuOpen(false)}>About</Link>
+        <Link to="/faq" onClick={() => setMobileMenuOpen(false)}>FAQ</Link>
+        <Link to="/premium" onClick={() => setMobileMenuOpen(false)}>Premium</Link>
+        <Link to="/login" className="login-btn" onClick={() => setMobileMenuOpen(false)}>Login</Link>
+        <Link to="/register" className="signup-btn" onClick={() => setMobileMenuOpen(false)}>Sign Up</Link>
       </div>
     </nav>
   );
