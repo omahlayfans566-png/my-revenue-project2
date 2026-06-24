@@ -1,0 +1,137 @@
+/* .auth-container {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #fff, #ffe4ec);
+}
+
+.auth-box {
+  width: 320px;
+  padding: 30px;
+  background: white;
+  border-radius: 15px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+  text-align: center;
+}
+
+.auth-box input {
+  width: 100%;
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+.auth-box button {
+  width: 100%;
+  padding: 10px;
+  background: #ff4d6d;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+} */
+
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  background:
+    linear-gradient(135deg, #fff 0%, #ffe5ec 100%);
+  padding: 20px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+
+  background: rgba(255,255,255,0.8);
+  backdrop-filter: blur(20px);
+
+  border-radius: 24px;
+
+  padding: 40px;
+
+  box-shadow:
+    0 10px 30px rgba(0,0,0,0.08);
+
+  border: 1px solid rgba(255,255,255,0.4);
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: 20px;
+  line-height: 1.2;
+  
+}
+
+.auth-header h1 {
+  margin-bottom: 10px;
+  color: #222;
+}
+
+.auth-header p {
+  color: #666;
+  line-height: 1.5;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.auth-form input {
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid #ddd;
+  font-size: 15px;
+}
+
+.auth-form input:focus {
+  outline: none;
+  border-color: #ff4d6d;
+}
+
+.auth-btn {
+  padding: 14px;
+
+  border: none;
+
+  border-radius: 12px;
+
+  background: linear-gradient(
+    135deg,
+    #ff4d6d,
+    #ff758f
+  );
+
+  color: white;
+
+  font-size: 16px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition: 0.3s;
+}
+
+.auth-btn:hover {
+  transform: translateY(-2px);
+}
+
+.auth-footer {
+  text-align: center;
+  margin-top: 20px;
+  color: #666;
+}
+
+.auth-footer span {
+  color: #ff4d6d;
+  font-weight: 600;
+  cursor: pointer;
+}
