@@ -56,7 +56,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<AuthUser | null>(getUserFromLocal());
     const [loading, setLoading] = useState(true);
 
-    // On mount: validate stored token
+    // On mount: validate stored token against the server
     useEffect(() => {
         const init = async () => {
             const token = getAuthToken();
@@ -68,9 +68,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 const res = await authAPI.getCurrentUser();
                 setUser(res.user);
                 saveUserToLocal(res.user);
-            } catch {
-                clearAuthData();
-                setUser(null);
+            } catch (err: any) {
+                const msg = (err.message || "").toLowerCase();
+                // Only clear auth on a genuine 401/403 (invalid/expired token).
+                // Keep the user logged in if the server/DB is simply unreachable.
+                const isAuthError =
+                    msg.includes("invalid token") ||
+                    msg.includes("no token") ||
+                    msg.includes("unauthorized") ||
+                    msg.includes("403") ||
+                    msg.includes("401");
+                if (isAuthError) {
+                    clearAuthData();
+                    setUser(null);
+                }
+                // Otherwise: keep cached user from localStorage so the app still
+                // works while the server is starting up or DB is connecting.
             } finally {
                 setLoading(false);
             }

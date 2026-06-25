@@ -24,11 +24,16 @@ import ViewProfile from "./pages/ViewProfile";
 
 // Auth context & guard
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { SocketProvider } from "./context/SocketContext";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
   if (loading) return <div className="app-loading">💕</div>;
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (user && !user.emailVerified && !user.isMember) {
+    return <Navigate to="/register" replace />;
+  }
+  return <>{children}</>;
 };
 
 const PublicOnlyRoute = ({ children }: { children: React.ReactNode }) => {
@@ -72,7 +77,9 @@ function AppRoutes() {
 function App() {
   return (
     <AuthProvider>
-      <AppRoutes />
+      <SocketProvider>
+        <AppRoutes />
+      </SocketProvider>
     </AuthProvider>
   );
 }

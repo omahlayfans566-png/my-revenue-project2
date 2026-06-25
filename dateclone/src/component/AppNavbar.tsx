@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import "../style/appNavbar.css";
 
-const AppNavbar = () => {
+const AppNavbar = ({ unreadMessages = 0 }: { unreadMessages?: number }) => {
     const { user, logout } = useAuth();
     const location = useLocation();
     const navigate = useNavigate();

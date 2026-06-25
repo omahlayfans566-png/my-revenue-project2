@@ -1,5 +1,24 @@
 {
-  "dependencies": {
-    "react-router-dom": "^7.18.0"
+  "name": "dateclone",
+  "version": "1.0.0",
+  "description": "DateClone — Africa's #1 Dating Platform",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail -p \"[{name}]\" -n \"BACKEND,FRONTEND\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm run backend\" \"npm run frontend\"",
+    "start": "pm2 start ecosystem.config.cjs && cd dateclone && npm run dev",
+    "backend": "cd backend && npm run dev",
+    "frontend": "cd dateclone && npm run dev",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:stop": "pm2 stop dateclone-backend",
+    "pm2:restart": "pm2 restart dateclone-backend",
+    "pm2:logs": "pm2 logs dateclone-backend",
+    "pm2:status": "pm2 list",
+    "pm2:save": "pm2 save",
+    "pm2:startup": "pm2 startup && pm2 save",
+    "install:all": "cd backend && npm install && cd ../dateclone && npm install",
+    "build": "cd dateclone && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   }
 }

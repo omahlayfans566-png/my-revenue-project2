@@ -1,39 +1,37 @@
 /* ─────────────────────────────────────────────────────────────────────────────
-   index.css  —  Global base reset for DateClone
-   Only global resets and font setup live here.
-   All component/page styles live in their own CSS files.
+   index.css — Global base reset + design tokens
 ───────────────────────────────────────────────────────────────────────────── */
 
-/* 1. Box-sizing reset */
+/* 1. Box-sizing */
 *,
 *::before,
 *::after {
   box-sizing: border-box;
 }
 
-/* 2. Body baseline */
+/* 2. Body */
 body {
   margin: 0;
-  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Inter', 'SF Pro Display', system-ui, 'Segoe UI', Roboto, sans-serif;
   font-size: 16px;
   line-height: 1.5;
-  color: #333;
+  color: #1a1a2e;
   background: #fff;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   overflow-x: hidden;
+  scroll-behavior: smooth;
 }
 
-/* 3. Root container — NO padding, NO text-align, NO max-width restriction.
-      Sections control their own width/padding. */
+/* 3. Root */
 #root {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
 
-/* 4. Remove default heading styles so component CSS fully owns them */
+/* 4. Headings */
 h1,
 h2,
 h3,
@@ -47,19 +45,19 @@ h6 {
   color: inherit;
 }
 
-/* 5. Paragraph reset */
+/* 5. Paragraph */
 p {
   margin: 0;
   padding: 0;
 }
 
-/* 6. Link reset */
+/* 6. Links */
 a {
   text-decoration: none;
   color: inherit;
 }
 
-/* 7. Button / input baseline */
+/* 7. Form elements */
 button,
 input,
 select,
@@ -74,16 +72,39 @@ button {
   cursor: pointer;
 }
 
-/* 8. Image reset */
+/* 8. Images */
 img {
   display: block;
   max-width: 100%;
 }
 
-/* 9. List reset */
+/* 9. Lists */
 ul,
 ol {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* 10. Focus visible — accessibility */
+:focus-visible {
+  outline: 2px solid #ff1744;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* 11. Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -18,7 +18,7 @@ const matchSchema = new mongoose.Schema(
         matchedUserLikedAt: Date,
         status: {
             type: String,
-            enum: ["viewed", "liked", "matched", "blocked", "rejected"],
+            enum: ["viewed", "liked", "superliked", "matched", "blocked", "rejected"],
             default: "viewed",
         },
         matchedAt: Date,

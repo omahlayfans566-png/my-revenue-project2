@@ -21,22 +21,34 @@ const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any
     let response: Response;
     try {
         response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
-    } catch (networkErr: any) {
-        // Network failure — server is down or unreachable
+    } catch {
+        // Network-level failure — server is completely unreachable
         throw new Error(
-            "Cannot reach the server. Make sure the backend is running on port 5000."
+            "Cannot reach the server. Make sure the backend is running " +
+            "(open a terminal in /backend and run: npm run dev)."
         );
     }
 
-    // Try to parse JSON body (even on error responses)
+    // Parse JSON — works for both success and error responses
     let body: any = {};
     try {
         body = await response.json();
     } catch {
-        body = { message: `Server returned status ${response.status}` };
+        // Non-JSON response — translate HTTP status codes into human messages
+        const statusMessages: Record<number, string> = {
+            502: "Backend server is not running. Open a terminal in /backend and run: npm run dev",
+            503: "Server is temporarily unavailable. Please try again in a moment.",
+            504: "Request timed out. Make sure the backend server is running.",
+            500: "Internal server error. Check the backend terminal for details.",
+            404: "API endpoint not found. Make sure the backend server is running.",
+        };
+        const msg = statusMessages[response.status]
+            ?? `Unexpected server response (status ${response.status}). Make sure the backend is running.`;
+        throw new Error(msg);
     }
 
     if (!response.ok) {
+        // Surface the server's own message directly — includes DB-not-connected, validation errors etc.
         throw new Error(body.message || `Request failed (${response.status})`);
     }
 
@@ -141,38 +153,30 @@ export const profileAPI = {
 // ============================================
 
 export const matchAPI = {
-    getSuggestions: async () => {
-        return apiCall("/matches/suggestions");
-    },
+    getSuggestions: async () => apiCall("/matches/suggestions"),
 
-    likeUser: async (likedUserId) => {
-        return apiCall("/matches/like", {
-            method: "POST",
-            body: JSON.stringify({ likedUserId }),
-        });
-    },
+    superLikeUser: async (likedUserId: string) =>
+        apiCall("/matches/superlike", { method: "POST", body: JSON.stringify({ likedUserId }) }),
 
-    passUser: async (passedUserId) => {
-        return apiCall("/matches/pass", {
-            method: "POST",
-            body: JSON.stringify({ passedUserId }),
-        });
-    },
+    likeUser: async (likedUserId: string) =>
+        apiCall("/matches/like", { method: "POST", body: JSON.stringify({ likedUserId }) }),
 
-    getMatches: async () => {
-        return apiCall("/matches/my-matches");
-    },
+    passUser: async (passedUserId: string) =>
+        apiCall("/matches/pass", { method: "POST", body: JSON.stringify({ passedUserId }) }),
 
-    getLikesReceived: async () => {
-        return apiCall("/matches/likes-received");
-    },
+    getMatches: async () => apiCall("/matches/my-matches"),
 
-    blockUser: async (blockedUserId) => {
-        return apiCall("/matches/block", {
-            method: "POST",
-            body: JSON.stringify({ blockedUserId }),
-        });
-    },
+    getLikesReceived: async () => apiCall("/matches/likes-received"),
+
+    blockUser: async (blockedUserId: string) =>
+        apiCall("/matches/block", { method: "POST", body: JSON.stringify({ blockedUserId }) }),
+
+    getRecentlyJoined: async () => apiCall("/matches/recently-joined"),
+    getRecentlyActive: async () => apiCall("/matches/recently-active"),
+    getNearby: async () => apiCall("/matches/nearby"),
+    getOnline: async () => apiCall("/matches/online"),
+    getCompatibility: async (userId: string) => apiCall(`/matches/compatibility/${userId}`),
+    getMemberCount: async () => apiCall("/matches/count"),
 };
 
 // ============================================

@@ -69,6 +69,16 @@ const userSchema = new mongoose.Schema(
         verificationToken: String,
         verificationTokenExpires: Date,
 
+        // ── Password reset ────────────────────────────────────────────────────
+        passwordResetToken: String,
+        passwordResetExpires: Date,
+
+        // ── Refresh tokens (stored as array to support multi-device) ──────────
+        refreshTokens: [{ type: String }],
+
+        // ── Admin role ────────────────────────────────────────────────────────
+        isAdmin: { type: Boolean, default: false },
+
         // ── Member status (set automatically on verification) ─────────────────
         isMember: { type: Boolean, default: false },  // fully onboarded member
         memberSince: Date,                                // timestamp of first activation

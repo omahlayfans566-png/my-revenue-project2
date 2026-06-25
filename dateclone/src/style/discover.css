@@ -1,64 +1,76 @@
 /* ── Discover Page ─────────────────────────────────────────────────────────── */
 .discover-page {
     flex: 1;
-    padding: 24px;
-    max-width: 520px;
+    display: flex;
+    flex-direction: column;
+    max-width: 540px;
     margin: 0 auto;
     width: 100%;
+    padding: 0 16px 24px;
 }
 
-.discover-header {
+/* ── Feed Tabs ───────────────────────────────────────────────────────────────── */
+.discover-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 12px 0 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.discover-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.discover-tab {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-bottom: 20px;
-}
-
-.discover-header h1 {
-    font-size: 1.8rem;
-    font-weight: 800;
-    background: linear-gradient(135deg, #ff1744, #ff4081);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-.discover-filter-btn {
-    padding: 8px 16px;
-    border: 1.5px solid #e0e0e0;
-    border-radius: 20px;
+    gap: 5px;
+    padding: 7px 14px;
+    border-radius: 50px;
+    border: 1.5px solid #e8e8e8;
     background: white;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     font-weight: 600;
-    color: #555;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.discover-filter-btn:hover {
-    border-color: #ff1744;
-    color: #ff1744;
-}
-
-.discover-filter-panel {
-    background: #fff5f7;
-    border: 1px solid rgba(255, 23, 68, 0.15);
-    border-radius: 12px;
-    padding: 14px 16px;
-    margin-bottom: 16px;
-    font-size: 0.88rem;
     color: #666;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    position: relative;
 }
 
-.discover-filter-panel a {
+.discover-tab:hover {
+    border-color: #ff4081;
     color: #ff1744;
-    font-weight: 600;
 }
 
-.discover-main {
+.discover-tab.active {
+    background: linear-gradient(135deg, #ff1744, #ff4081);
+    border-color: transparent;
+    color: white;
+    box-shadow: 0 4px 14px rgba(255, 23, 68, 0.3);
+}
+
+.tab-online-count {
+    background: #4caf50;
+    color: white;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    font-size: 0.65rem;
     display: flex;
+    align-items: center;
     justify-content: center;
-    align-items: flex-start;
+    font-weight: 800;
+}
+
+/* ── Main content area ───────────────────────────────────────────────────────── */
+.discover-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
 /* Loading */
@@ -66,6 +78,10 @@
     text-align: center;
     padding: 80px 0;
     color: #999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
 }
 
 .discover-spinner {
@@ -74,43 +90,54 @@
     border: 4px solid rgba(255, 23, 68, 0.15);
     border-top-color: #ff1744;
     border-radius: 50%;
-    animation: discoverSpin 0.8s linear infinite;
-    margin: 0 auto 16px;
+    animation: spin 0.8s linear infinite;
 }
 
-@keyframes discoverSpin {
+@keyframes spin {
     to {
         transform: rotate(360deg);
     }
 }
 
-/* ── Swipe card ─────────────────────────────────────────────────────────────── */
+.discover-empty {
+    padding: 60px 24px;
+}
+
+/* ── Swipe Card ──────────────────────────────────────────────────────────────── */
 .swipe-card {
     width: 100%;
     background: white;
     border-radius: 24px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
     overflow: hidden;
-    transition: transform 0.4s ease, opacity 0.4s ease;
+    transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s ease;
+    position: relative;
+    user-select: none;
 }
 
 .swipe-card.swipe-right {
-    transform: translateX(120%) rotate(15deg);
+    transform: translateX(130%) rotate(20deg);
     opacity: 0;
 }
 
 .swipe-card.swipe-left {
-    transform: translateX(-120%) rotate(-15deg);
+    transform: translateX(-130%) rotate(-20deg);
     opacity: 0;
 }
 
-/* Photo section */
+.swipe-card.swipe-up {
+    transform: translateY(-130%) scale(0.9);
+    opacity: 0;
+}
+
+/* Photo area */
 .swipe-photo {
     position: relative;
     width: 100%;
-    height: 400px;
-    background: linear-gradient(135deg, #fce4ec, #f8bbd0);
+    height: 420px;
     overflow: hidden;
+    background: linear-gradient(135deg, #fce4ec, #f8bbd0);
+    cursor: pointer;
 }
 
 .swipe-photo img {
@@ -118,6 +145,11 @@
     height: 100%;
     object-fit: cover;
     display: block;
+    transition: transform 0.3s ease;
+}
+
+.swipe-photo:hover img {
+    transform: scale(1.02);
 }
 
 .swipe-photo-placeholder {
@@ -132,52 +164,172 @@
     background: linear-gradient(135deg, #ff1744, #ff4081);
 }
 
-/* Compatibility badge */
-.swipe-compat {
+/* Photo navigation */
+.photo-prev,
+.photo-next {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 35%;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.photo-prev {
+    left: 0;
+}
+
+.photo-next {
+    right: 0;
+}
+
+/* Photo dots */
+.photo-dots {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 5px;
+    z-index: 3;
+}
+
+.photo-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.photo-dot.active {
+    background: white;
+    width: 20px;
+    border-radius: 3px;
+}
+
+/* Badges */
+.swipe-badges {
     position: absolute;
     top: 12px;
     right: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    align-items: flex-end;
+    z-index: 3;
+}
+
+.badge-compat {
     background: rgba(255, 23, 68, 0.9);
     color: white;
-    padding: 5px 12px;
+    padding: 4px 10px;
     border-radius: 20px;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 700;
     backdrop-filter: blur(4px);
 }
 
-/* Info overlay on photo */
+.badge-verified {
+    background: rgba(76, 175, 80, 0.9);
+    color: white;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.badge-premium {
+    background: rgba(245, 158, 11, 0.9);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 20px;
+    font-size: 0.78rem;
+}
+
+/* Swipe stamp overlays */
+.swipe-stamp {
+    position: absolute;
+    top: 28px;
+    font-size: 1.8rem;
+    font-weight: 900;
+    letter-spacing: 2px;
+    border-radius: 8px;
+    padding: 6px 16px;
+    z-index: 10;
+    border: 4px solid;
+    transform: rotate(-15deg);
+    animation: stampIn 0.15s ease;
+}
+
+@keyframes stampIn {
+    from {
+        opacity: 0;
+        transform: rotate(-15deg) scale(0.7);
+    }
+
+    to {
+        opacity: 1;
+        transform: rotate(-15deg) scale(1);
+    }
+}
+
+.stamp-like {
+    left: 20px;
+    color: #22c55e;
+    border-color: #22c55e;
+    background: rgba(34, 197, 94, 0.1);
+}
+
+.stamp-nope {
+    right: 20px;
+    color: #ef4444;
+    border-color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+    transform: rotate(15deg);
+}
+
+.stamp-super {
+    left: 50%;
+    transform: translateX(-50%) rotate(-5deg);
+    color: #3b82f6;
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.1);
+}
+
+/* Info overlay */
 .swipe-overlay {
     position: absolute;
     bottom: 0;
     left: 0;
     right: 0;
-    background: linear-gradient(to top, rgba(0, 0, 0, 0.75) 0%, transparent 100%);
-    padding: 40px 20px 16px;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.82) 0%, transparent 100%);
+    padding: 48px 20px 16px;
     color: white;
 }
 
 .swipe-overlay h2 {
-    font-size: 1.5rem;
+    font-size: 1.6rem;
     font-weight: 800;
     margin-bottom: 4px;
 }
 
 .swipe-location,
 .swipe-occupation {
-    font-size: 0.9rem;
+    font-size: 0.88rem;
     opacity: 0.9;
     margin-bottom: 2px;
 }
 
 /* Bio */
 .swipe-bio {
-    padding: 16px 20px 0;
+    padding: 14px 18px 0;
 }
 
 .swipe-bio p {
     color: #555;
-    font-size: 0.92rem;
+    font-size: 0.9rem;
     line-height: 1.6;
 }
 
@@ -185,31 +337,41 @@
 .swipe-interests {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    padding: 12px 20px;
+    gap: 7px;
+    padding: 10px 18px;
 }
 
 .swipe-tag {
-    padding: 5px 12px;
+    padding: 4px 11px;
     background: rgba(255, 23, 68, 0.08);
     color: #ff1744;
     border-radius: 20px;
-    font-size: 0.78rem;
+    font-size: 0.76rem;
     font-weight: 700;
+}
+
+/* Details row */
+.swipe-details-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 6px 18px 0;
+    font-size: 0.8rem;
+    color: #888;
 }
 
 /* View profile */
 .swipe-view-btn {
     display: block;
-    width: calc(100% - 40px);
-    margin: 8px 20px 0;
-    padding: 10px;
+    width: calc(100% - 36px);
+    margin: 8px 18px 0;
+    padding: 9px;
     background: none;
-    border: 1.5px solid #e0e0e0;
+    border: 1.5px solid #e8e8e8;
     border-radius: 10px;
-    font-size: 0.88rem;
+    font-size: 0.85rem;
     font-weight: 600;
-    color: #666;
+    color: #555;
     cursor: pointer;
     transition: all 0.2s;
     text-align: center;
@@ -220,71 +382,121 @@
     color: #ff1744;
 }
 
-/* Action buttons */
+/* ── Action buttons ───────────────────────────────────────────────────────────── */
 .swipe-actions {
     display: flex;
     justify-content: center;
-    gap: 32px;
-    padding: 20px;
+    align-items: center;
+    gap: 18px;
+    padding: 16px 20px;
 }
 
 .action-btn {
-    width: 64px;
-    height: 64px;
     border-radius: 50%;
     border: none;
-    font-size: 1.5rem;
     cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+    font-size: 1.4rem;
 }
 
 .action-pass {
+    width: 58px;
+    height: 58px;
     background: white;
-    color: #e53935;
     border: 2px solid #ffcdd2;
-    font-size: 1.3rem;
-    font-weight: 700;
+    box-shadow: 0 4px 16px rgba(229, 57, 53, 0.15);
 }
 
 .action-pass:hover:not(:disabled) {
     background: #ffebee;
-    transform: scale(1.12);
-    box-shadow: 0 8px 25px rgba(229, 57, 53, 0.25);
+    transform: scale(1.1);
+    box-shadow: 0 8px 24px rgba(229, 57, 53, 0.3);
+}
+
+.action-superlike {
+    width: 50px;
+    height: 50px;
+    background: white;
+    border: 2px solid #bbdefb;
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.15);
+}
+
+.action-superlike:hover:not(:disabled) {
+    background: #e3f2fd;
+    transform: scale(1.12) translateY(-4px);
+    box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3);
 }
 
 .action-like {
+    width: 68px;
+    height: 68px;
     background: linear-gradient(135deg, #ff1744, #ff4081);
-    color: white;
-    box-shadow: 0 6px 20px rgba(255, 23, 68, 0.35);
+    box-shadow: 0 6px 22px rgba(255, 23, 68, 0.4);
 }
 
 .action-like:hover:not(:disabled) {
     transform: scale(1.12);
-    box-shadow: 0 10px 30px rgba(255, 23, 68, 0.5);
+    box-shadow: 0 10px 32px rgba(255, 23, 68, 0.55);
 }
 
 .action-btn:disabled {
-    opacity: 0.5;
+    opacity: 0.45;
     cursor: not-allowed;
+    transform: none !important;
 }
 
-.swipe-counter {
+.action-btn span {
+    pointer-events: none;
+}
+
+.swipe-hint {
     text-align: center;
-    font-size: 0.8rem;
+    font-size: 0.72rem;
+    color: #ccc;
+    padding-bottom: 14px;
+    margin: 0;
+}
+
+/* ── Progress dots ───────────────────────────────────────────────────────────── */
+.swipe-progress {
+    display: flex;
+    gap: 6px;
+    margin-top: 12px;
+    align-items: center;
+    justify-content: center;
+}
+
+.progress-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #e8e8e8;
+    transition: all 0.2s;
+}
+
+.progress-dot.active {
+    background: #ff1744;
+    transform: scale(1.3);
+}
+
+.progress-dot.done {
+    background: #ffcdd2;
+}
+
+.progress-more {
+    font-size: 0.72rem;
     color: #bbb;
-    padding-bottom: 16px;
 }
 
 /* ── Match modal ─────────────────────────────────────────────────────────────── */
 .match-modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(6px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -299,14 +511,16 @@
     text-align: center;
     max-width: 380px;
     width: 100%;
-    animation: matchPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-    box-shadow: 0 30px 80px rgba(255, 23, 68, 0.2);
+    animation: matchPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 32px 80px rgba(255, 23, 68, 0.25);
+    position: relative;
+    overflow: hidden;
 }
 
 @keyframes matchPop {
     from {
         opacity: 0;
-        transform: scale(0.7);
+        transform: scale(0.6);
     }
 
     to {
@@ -315,14 +529,83 @@
     }
 }
 
-.match-modal-confetti {
-    font-size: 3rem;
-    margin-bottom: 12px;
+.match-confetti {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100%;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.confetti-piece {
+    position: absolute;
+    font-size: 1.4rem;
+    animation: confettiFall 1.5s ease-out forwards;
+    top: -20px;
+}
+
+.confetti-piece:nth-child(1) {
+    left: 10%;
+    animation-delay: 0s;
+}
+
+.confetti-piece:nth-child(2) {
+    left: 30%;
+    animation-delay: 0.1s;
+}
+
+.confetti-piece:nth-child(3) {
+    left: 50%;
+    animation-delay: 0.2s;
+}
+
+.confetti-piece:nth-child(4) {
+    left: 70%;
+    animation-delay: 0.15s;
+}
+
+.confetti-piece:nth-child(5) {
+    left: 90%;
+    animation-delay: 0.05s;
+}
+
+@keyframes confettiFall {
+    to {
+        transform: translateY(400px) rotate(720deg);
+        opacity: 0;
+    }
+}
+
+.match-modal-avatars {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.match-avatar {
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 4px solid #ff4081;
+}
+
+.match-avatar-placeholder {
+    background: linear-gradient(135deg, #ff1744, #ff4081);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.6rem;
+    font-weight: 800;
 }
 
 .match-modal h2 {
     font-size: 2rem;
-    font-weight: 800;
+    font-weight: 900;
     background: linear-gradient(135deg, #ff1744, #ff4081);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -336,53 +619,38 @@
     margin-bottom: 24px;
 }
 
-.match-modal-avatars {
-    display: flex;
-    justify-content: center;
-    gap: 16px;
-    margin-bottom: 28px;
-}
-
-.match-avatar {
-    width: 80px;
-    height: 80px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 3px solid #ff4081;
-}
-
-.match-avatar-placeholder {
-    background: linear-gradient(135deg, #ff1744, #ff4081);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 1.5rem;
-    font-weight: 800;
-}
-
 .match-modal-actions {
     display: flex;
     flex-direction: column;
     gap: 10px;
 }
 
-/* ── Responsive ─────────────────────────────────────────────────────────────── */
+/* ── Responsive ──────────────────────────────────────────────────────────────── */
 @media (max-width: 480px) {
     .discover-page {
-        padding: 16px;
+        padding: 0 10px 20px;
     }
 
     .swipe-photo {
-        height: 320px;
+        height: 360px;
     }
 
-    .action-btn {
-        width: 56px;
-        height: 56px;
+    .action-pass {
+        width: 52px;
+        height: 52px;
+    }
+
+    .action-superlike {
+        width: 44px;
+        height: 44px;
+    }
+
+    .action-like {
+        width: 62px;
+        height: 62px;
     }
 
     .match-modal {
-        padding: 36px 24px;
+        padding: 36px 22px;
     }
 }

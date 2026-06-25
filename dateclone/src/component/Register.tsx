@@ -71,8 +71,8 @@ function useLocation(onResult: (r: LocResult) => void) {
 
 
 // ─── Reusable UI atoms ────────────────────────────────────────────────────────
-const OptionCard = ({ value, label, icon, selected, onClick }: any) => (
-    <button type="button" className={`opt-card ${selected ? "selected" : ""}`} onClick={() => onClick(value)}>
+const OptionCard = ({ v, label, icon, selected, onClick }: any) => (
+    <button type="button" className={`opt-card ${selected ? "selected" : ""}`} onClick={() => onClick(v)}>
         {icon && <span className="opt-icon">{icon}</span>}
         <span className="opt-label">{label}</span>
         {selected && <span className="opt-check">✓</span>}
@@ -260,7 +260,8 @@ const Register = () => {
     const next = async () => {
         if (!validate(step)) return;
         if (step === 6) {
-            setSubmitting(true); setSubmitErr("");
+            setSubmitting(true);
+            setSubmitErr("");
             try {
                 const res = await authAPI.register(fd);
                 setAuthToken(res.token);
@@ -268,8 +269,17 @@ const Register = () => {
                 setStep(7);
                 window.scrollTo(0, 0);
             } catch (err: any) {
-                setSubmitErr(err.message || "Registration failed. Please try again.");
-            } finally { setSubmitting(false); }
+                const msg = (err.message || "").toLowerCase();
+                if (msg.includes("cannot reach") || msg.includes("failed to fetch")) {
+                    setSubmitErr("⚠️ Backend server is not running. Open a terminal in /backend and run: npm run dev");
+                } else if (msg.includes("already registered") || msg.includes("already taken")) {
+                    setSubmitErr(err.message);
+                } else {
+                    setSubmitErr(err.message || "Registration failed. Please try again.");
+                }
+            } finally {
+                setSubmitting(false);
+            }
             return;
         }
         setErrors({});
@@ -371,13 +381,13 @@ const S1 = ({ fd, errors, inp, showPw, setShowPw, showCpw, setShowCpw }: any) =>
 
 // ─── Step 2 — Identity ────────────────────────────────────────────────────────
 const GENDER_OPTS = [
-    { v: "male", label: "Man", icon: "♂️" },
-    { v: "female", label: "Woman", icon: "♀️" },
-    { v: "other", label: "Non-binary / Other", icon: "⚧️" },
+    { v: "male", label: "Man", icon: "👨" },
+    { v: "female", label: "Woman", icon: "👩" },
+    { v: "other", label: "Non-binary / Other", icon: "🧑" },
 ];
 const LOOKING_OPTS = [
-    { v: "men", label: "Men", icon: "♂️" },
-    { v: "women", label: "Women", icon: "♀️" },
+    { v: "men", label: "Men", icon: "👨" },
+    { v: "women", label: "Women", icon: "👩" },
     { v: "both", label: "Everyone", icon: "💫" },
 ];
 
@@ -668,10 +678,21 @@ const S7 = ({ fd, navigate }: any) => {
         if (code.length < 6) { setStatus("error"); setMsg("Enter the full 6-digit code."); return; }
         setStatus("verifying"); setMsg("");
         try {
-            await authAPI.verifyOtp(fd.email, code);
-            setStatus("success"); setMsg("Email verified! 🎉 Welcome to DateClone!");
-            setTimeout(() => navigate("/discover"), 1800);
-        } catch (err: any) { setStatus("error"); setMsg(err.message || "Invalid code."); }
+            const res = await authAPI.verifyOtp(fd.email, code);
+            // Persist the new token and member profile returned by the backend
+            if (res.token) {
+                localStorage.setItem("authToken", res.token);
+            }
+            if (res.user) {
+                localStorage.setItem("user", JSON.stringify(res.user));
+            }
+            setStatus("success");
+            setMsg(res.message || "Email verified! 🎉 Welcome to DateClone!");
+            setTimeout(() => navigate("/discover", { replace: true }), 1800);
+        } catch (err: any) {
+            setStatus("error");
+            setMsg(err.message || "Invalid code. Please try again.");
+        }
     };
 
     const resend = async () => {

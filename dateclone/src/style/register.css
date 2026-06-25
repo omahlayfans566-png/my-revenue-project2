@@ -122,7 +122,7 @@
     box-shadow: 0 20px 60px rgba(255, 23, 68, 0.1), 0 4px 16px rgba(0, 0, 0, 0.06);
     margin-top: 28px;
     overflow: hidden;
-    animation: rgSlideUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: rgSlideUp 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 @keyframes rgSlideUp {
@@ -143,7 +143,7 @@
     display: flex;
     flex-direction: column;
     gap: 22px;
-    animation: rgFadeIn 0.3s ease both;
+    animation: rgFadeIn 0.25s ease forwards;
 }
 
 @keyframes rgFadeIn {
@@ -355,6 +355,9 @@
     cursor: pointer;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     text-align: center;
+    /* Ensure the button itself always receives the click */
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
 }
 
 .opt-card:hover {
@@ -366,6 +369,14 @@
     border-color: #ff1744;
     background: linear-gradient(135deg, rgba(255, 23, 68, 0.06), rgba(255, 64, 129, 0.06));
     box-shadow: 0 4px 16px rgba(255, 23, 68, 0.18);
+}
+
+/* All child elements must NEVER intercept pointer events — they sit inside the
+   button so the button's onClick always fires regardless of where the tap lands */
+.opt-icon,
+.opt-label,
+.opt-check {
+    pointer-events: none;
 }
 
 .opt-icon {
@@ -419,6 +430,10 @@
     transition: all 0.2s ease;
     white-space: nowrap;
     line-height: 1;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    pointer-events: auto;
+    /* pill itself is clickable */
 }
 
 .pill:hover {
@@ -455,6 +470,13 @@
     cursor: pointer;
     transition: all 0.2s ease;
     text-align: left;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+}
+
+/* Children of interest chips must never intercept pointer events */
+.interest-chip>* {
+    pointer-events: none;
 }
 
 .interest-chip:hover {
@@ -481,6 +503,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    pointer-events: none;
 }
 
 /* ── Location card ───────────────────────────────────────────────────────────── */
@@ -730,15 +753,18 @@
 }
 
 .rg-submit-err {
-    font-size: 0.82rem;
+    font-size: 0.85rem;
     font-weight: 600;
-    color: #e53935;
-    background: rgba(229, 57, 53, 0.07);
-    border: 1px solid rgba(229, 57, 53, 0.2);
-    border-radius: 8px;
-    padding: 7px 12px;
-    max-width: 320px;
-    text-align: center;
+    color: #b71c1c;
+    background: rgba(183, 28, 28, 0.07);
+    border: 1.5px solid rgba(183, 28, 28, 0.25);
+    border-left: 4px solid #b71c1c;
+    border-radius: 10px;
+    padding: 12px 16px;
+    max-width: 380px;
+    text-align: left;
+    line-height: 1.5;
+    width: 100%;
 }
 
 /* Spinner */
