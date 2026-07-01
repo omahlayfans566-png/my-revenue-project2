@@ -1,8 +1,8 @@
 /**
  * emailService.js
  *
- * Lazy-initialises the nodemailer transporter so a missing/placeholder
- * GMAIL_USER never crashes the server on startup.
+ * Lazy-initialises the nodemailer transporter using SMTP credentials
+ * from environment variables.
  */
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
@@ -11,53 +11,86 @@ dotenv.config();
 // ── Lazy transporter ──────────────────────────────────────────────────────────
 let _transporter = null;
 
+const isDev = () => (process.env.NODE_ENV || "development") !== "production";
+
+const looksLikePlaceholder = (value) => {
+  if (!value) return true;
+  const v = String(value).trim().toLowerCase();
+  return (
+    v.startsWith("your_") ||
+    v.includes("example.com") ||
+    v === "changeme" ||
+    v === "test"
+  );
+};
+
+const logDevEmailFallback = (options, reason) => {
+  console.warn(`\n[Email DEV fallback] ${reason}`);
+  console.log("╔══════════════════════════════════════╗");
+  console.log("║   EMAIL NOT SENT (DEV FALLBACK)      ║");
+  console.log("╠══════════════════════════════════════╣");
+  console.log(`║  To:      ${options.to}`);
+  console.log(`║  Subject: ${options.subject}`);
+  if (options._otp) {
+    console.log(`║  OTP CODE: ${options._otp}`);
+  }
+  console.log("╚══════════════════════════════════════╝\n");
+};
+
 const getTransporter = () => {
   if (_transporter) return _transporter;
 
-  const user = process.env.GMAIL_USER;
-  const pass = process.env.GMAIL_PASSWORD;
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpPort = Number(process.env.SMTP_PORT || 587);
+  const smtpSecure = String(process.env.SMTP_SECURE || "false").toLowerCase() === "true";
+  const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER;
+  const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASSWORD;
 
-  if (!user || user === "your_email@gmail.com" || !pass || pass === "your_16_char_app_password") {
-    // Return a dummy transporter that logs instead of sending
-    return null;
+  if (!smtpUser || !smtpPass || looksLikePlaceholder(smtpUser) || looksLikePlaceholder(smtpPass)) {
+    throw new Error("SMTP credentials are missing. Set SMTP_USER and SMTP_PASS (or GMAIL_USER and GMAIL_PASSWORD).");
+  }
+
+  if (smtpHost) {
+    _transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      auth: { user: smtpUser, pass: smtpPass },
+    });
+    return _transporter;
   }
 
   _transporter = nodemailer.createTransport({
     service: "gmail",
-    auth: { user, pass },
+    auth: { user: smtpUser, pass: smtpPass },
   });
   return _transporter;
 };
 
 /**
- * Send an email. Silently no-ops if email is not configured (dev mode).
+ * Send an email. Throws on configuration or transport failures.
  */
 const sendMail = async (options) => {
-  const t = getTransporter();
-  if (!t) {
-    // Dev fallback — log to console so you can copy the OTP during testing
-    console.log("\n╔══════════════════════════════════════╗");
-    console.log("║  📧 EMAIL NOT CONFIGURED — DEV MODE  ║");
-    console.log("╠══════════════════════════════════════╣");
-    console.log(`║  To:      ${options.to}`);
-    console.log(`║  Subject: ${options.subject}`);
-    if (options._otp) {
-      console.log(`║  OTP CODE: ${options._otp}  ← use this to verify`);
+  try {
+    const t = getTransporter();
+    return await t.sendMail(options);
+  } catch (error) {
+    if (isDev()) {
+      logDevEmailFallback(options, error.message);
+      return { messageId: "dev-fallback" };
     }
-    console.log("╚══════════════════════════════════════╝\n");
-    return { messageId: "dev-mode-no-email-sent" };
+    throw error;
   }
-  return t.sendMail(options);
 };
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export const sendVerificationEmail = async (email, otp) => {
   return sendMail({
-    from: `"DateClone 💕" <${process.env.GMAIL_USER || "noreply@dateclone.com"}>`,
+    from: process.env.SMTP_FROM || `"DateClone" <${process.env.SMTP_USER || process.env.GMAIL_USER || "noreply@dateclone.com"}>`,
     to: email,
     subject: "Your DateClone Verification Code",
-    _otp: otp,   // used by dev fallback logger
+    _otp: otp,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
         <div style="background:linear-gradient(135deg,#ff1744,#ff4081);padding:24px 20px;border-radius:12px 12px 0 0;text-align:center;">
@@ -84,7 +117,7 @@ export const sendVerificationEmail = async (email, otp) => {
 
 export const sendWelcomeEmail = async (email, firstName) => {
   return sendMail({
-    from: `"DateClone 💕" <${process.env.GMAIL_USER || "noreply@dateclone.com"}>`,
+    from: process.env.SMTP_FROM || `"DateClone" <${process.env.SMTP_USER || process.env.GMAIL_USER || "noreply@dateclone.com"}>`,
     to: email,
     subject: "Welcome to DateClone! 🎉",
     html: `
@@ -103,7 +136,7 @@ export const sendWelcomeEmail = async (email, firstName) => {
 
 export const sendPremiumActivationEmail = async (email, tier, expiryDate) => {
   return sendMail({
-    from: `"DateClone 💕" <${process.env.GMAIL_USER || "noreply@dateclone.com"}>`,
+    from: process.env.SMTP_FROM || `"DateClone" <${process.env.SMTP_USER || process.env.GMAIL_USER || "noreply@dateclone.com"}>`,
     to: email,
     subject: `🎉 Premium ${tier.toUpperCase()} Activated!`,
     html: `
@@ -121,10 +154,9 @@ export const sendPremiumActivationEmail = async (email, tier, expiryDate) => {
 export const sendPasswordResetEmail = async (email, resetToken) => {
   const resetUrl = `${process.env.FRONTEND_URL || "http://localhost:5174"}/reset-password?token=${resetToken}`;
   return sendMail({
-    from: `"DateClone 💕" <${process.env.GMAIL_USER || "noreply@dateclone.com"}>`,
+    from: process.env.SMTP_FROM || `"DateClone" <${process.env.SMTP_USER || process.env.GMAIL_USER || "noreply@dateclone.com"}>`,
     to: email,
     subject: "Reset Your DateClone Password",
-    _otp: resetToken,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
         <div style="background:linear-gradient(135deg,#ff1744,#ff4081);padding:24px;border-radius:12px 12px 0 0;text-align:center;">

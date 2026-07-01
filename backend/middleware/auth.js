@@ -5,9 +5,9 @@ const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "dateclone_refresh_
 
 // ── Token generation ──────────────────────────────────────────────────────────
 
-/** Short-lived access token — 7 days */
-export const generateToken = (userId) =>
-    jwt.sign({ userId, type: "access" }, JWT_SECRET, { expiresIn: "7d" });
+/** Short-lived access token — defaults to 7 days */
+export const generateToken = (userId, expiresIn = "7d") =>
+    jwt.sign({ userId, type: "access" }, JWT_SECRET, { expiresIn });
 
 /** Long-lived refresh token — 30 days */
 export const generateRefreshToken = (userId) =>

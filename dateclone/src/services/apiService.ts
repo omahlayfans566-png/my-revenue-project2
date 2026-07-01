@@ -67,10 +67,10 @@ export const authAPI = {
         });
     },
 
-    verifyEmail: async (token) => {
+    verifyEmail: async (email: string, token: string) => {
         return apiCall("/auth/verify-email", {
             method: "POST",
-            body: JSON.stringify({ token }),
+            body: JSON.stringify({ email, token }),
         });
     },
 

@@ -31,7 +31,7 @@ const testimonials = [
     }
 ];
 
-const StarRating = ({ rating }) => {
+const StarRating = ({ rating }: { rating: number }) => {
     return (
         <div className="stars">
             {[...Array(rating)].map((_, i) => (
@@ -47,20 +47,23 @@ const Testimonials = () => {
         <section className="testimonials">
 
             <div className="stats">
-                <div>
+                <article className="stat-card">
+                    <span className="stat-icon">💘</span>
                     <h3>2M+</h3>
                     <p>Matches Made</p>
-                </div>
+                </article>
 
-                <div>
+                <article className="stat-card">
+                    <span className="stat-icon">💍</span>
                     <h3>150K+</h3>
                     <p>Success Stories</p>
-                </div>
+                </article>
 
-                <div>
+                <article className="stat-card">
+                    <span className="stat-icon">🌍</span>
                     <h3>25+</h3>
                     <p>African Countries</p>
-                </div>
+                </article>
             </div>
 
             <div className="testimonial-heading">
@@ -91,6 +94,8 @@ const Testimonials = () => {
                         </div>
 
                         <div className="testimonial-content">
+                            <div className="quote-mark">"</div>
+
                             <div className="verified">
                                 ✓ Verified Couple
                             </div>

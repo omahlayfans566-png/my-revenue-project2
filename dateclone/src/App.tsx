@@ -27,12 +27,9 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { SocketProvider } from "./context/SocketContext";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated, loading, user } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   if (loading) return <div className="app-loading">💕</div>;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (user && !user.emailVerified && !user.isMember) {
-    return <Navigate to="/register" replace />;
-  }
   return <>{children}</>;
 };
 

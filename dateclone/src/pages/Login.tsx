@@ -23,7 +23,7 @@ const classify = (msg: string): { type: string; text: string } => {
     };
   }
   if (m.includes("database not connected") || m.includes("port 27017") || m.includes("503")) {
-    return { type: "database", text: "Database connection issue. The app is using memory mode — try again." };
+    return { type: "database", text: "Database connection issue. MongoDB is disconnected; try again shortly." };
   }
   if (m.includes("verify your email") || m.includes("verify your email before")) {
     return { type: "unverified", text: "Please verify your email before logging in." };
