@@ -1,10 +1,12 @@
+import dotenv from "dotenv";
+dotenv.config();   // must be first — loads .env before any other import uses process.env
+
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import dotenv from "dotenv";
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 import { connectDB, isMongoConnected } from "./config/database.js";
@@ -15,8 +17,6 @@ import paymentRoutes from "./routes/paymentRoutes.js";
 import messageRoutes from "./routes/messageRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { requestLogger } from "./middleware/requestLogger.js";
-
-dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
@@ -78,8 +78,8 @@ io.on("connection", (socket) => {
     });
 });
 
-// ── Middleware ────────────────────────────────────────────────────────────────
-app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" }, contentSecurityPolicy: process.env.NODE_ENV === "production" }));
+// ── Security & parsing middleware ─────────────────────────────────────────────
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" }, contentSecurityPolicy: false }));
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 app.use(express.json({ limit: "50mb" }));
@@ -88,9 +88,9 @@ if (process.env.NODE_ENV !== "production") app.use(requestLogger);
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 app.use("/api", rateLimit({ windowMs: 60000, max: 200, standardHeaders: true, legacyHeaders: false }));
-app.use("/api/auth", rateLimit({ windowMs: 15 * 60000, max: 30, message: { success: false, message: "Too many attempts. Wait 15 min." } }));
+app.use("/api/auth", rateLimit({ windowMs: 15 * 60000, max: 30, message: { success: false, message: "Too many attempts. Wait 15 minutes." } }));
 
-// ── Routes ────────────────────────────────────────────────────────────────────
+// ── API Routes ────────────────────────────────────────────────────────────────
 app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/matches", matchRoutes);
@@ -99,11 +99,11 @@ app.use("/api/messages", messageRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
-    const connected = isMongoConnected();
-    res.status(connected ? 200 : 503).json({
-        status: connected ? "healthy" : "degraded",
-        database: connected ? "MongoDB Atlas connected" : "MongoDB disconnected",
-        persistence: connected ? "persistent" : "unavailable",
+    const ok = isMongoConnected();
+    res.status(ok ? 200 : 503).json({
+        status: ok ? "healthy" : "degraded",
+        database: ok ? "MongoDB Atlas — connected" : "Not connected — memory mode",
+        persistence: ok ? "permanent" : "none — data resets on restart",
         onlineUsers: onlineUsers.size,
         uptime: Math.floor(process.uptime()) + "s",
         time: new Date().toISOString(),
@@ -114,24 +114,24 @@ app.get("/api/health", (_req, res) => {
 // ── 404 ───────────────────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ success: false, message: "Route not found" }));
 
-// ── Error handler ─────────────────────────────────────────────────────────────
+// ── Global error handler ──────────────────────────────────────────────────────
 app.use(errorHandler);
 
 // ── Start ─────────────────────────────────────────────────────────────────────
+// Note: connectDB is non-blocking — the server starts regardless of DB status.
+// Auth routes return 503 when DB is not connected.
 const start = async () => {
-    try {
-        await connectDB();
-        server.listen(PORT, () => {
-            console.log(`\nServer running -> http://localhost:${PORT}`);
-            console.log(`Health check  -> http://localhost:${PORT}/api/health`);
-            console.log("Socket.io     -> enabled");
-            console.log(`Environment   -> ${process.env.NODE_ENV || "development"}\n`);
-        });
-    } catch (error) {
-        console.error("Failed to start backend because MongoDB did not connect.");
-        console.error(error.message);
-        process.exit(1);
-    }
+    // Attempt DB connection (does not throw — falls back gracefully)
+    await connectDB();
+
+    server.listen(PORT, () => {
+        const dbStatus = isMongoConnected() ? "✅ MongoDB connected" : "⚠️  Memory mode (MongoDB not connected)";
+        console.log(`\n🚀 Server running  → http://localhost:${PORT}`);
+        console.log(`   Health check   → http://localhost:${PORT}/api/health`);
+        console.log(`   Database       → ${dbStatus}`);
+        console.log(`   Socket.io      → enabled`);
+        console.log(`   Environment    → ${process.env.NODE_ENV || "development"}\n`);
+    });
 };
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────────

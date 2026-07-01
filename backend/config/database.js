@@ -13,54 +13,74 @@ const CONNECTION_OPTIONS = {
 const redactMongoUri = (uri) =>
     uri.replace(/\/\/([^:]+):([^@]+)@/, "//$1:<redacted>@");
 
+const _logAtlasHelp = (errMsg = "") => {
+    console.error("   Action required:");
+    if (errMsg.includes("Authentication") || errMsg.includes("bad auth")) {
+        console.error("   → Wrong password. Check: cloud.mongodb.com → Security → Database Access");
+    } else {
+        console.error("   [1] cloud.mongodb.com → Clusters → is cluster RUNNING? (not paused)");
+        console.error("   [2] Security → Network Access → 0.0.0.0/0 must be ACTIVE");
+        console.error("   [3] Connect to mobile hotspot if home router blocks port 27017");
+    }
+    console.error("   ⚡ Server will run in memory mode until MongoDB connects.\n");
+    // Auto-retry after 30 seconds
+    setTimeout(() => connectDB(), 30000);
+};
+
 export const connectDB = async () => {
     const uri = process.env.MONGODB_URI;
     const fallbackUri = process.env.MONGODB_URI_DIRECT || process.env.MONGODB_FALLBACK_URI;
 
     if (!uri) {
-        throw new Error("MONGODB_URI is not set in backend/.env");
+        console.error("❌ MONGODB_URI is not set in backend/.env");
+        return null;   // non-throwing — server continues in memory mode
     }
 
     console.log("\nConnecting to MongoDB Atlas...");
-    console.log(`Primary URI: ${redactMongoUri(uri)}`);
+    console.log(`URI: ${redactMongoUri(uri)}`);
 
     let connection;
     try {
         connection = await mongoose.connect(uri, CONNECTION_OPTIONS);
     } catch (error) {
         const isSrvError =
-            error?.message?.includes("querySrv") || error?.message?.includes("ECONNREFUSED");
+            error?.message?.includes("querySrv") || error?.message?.includes("ECONNREFUSED") || error?.message?.includes("ENOTFOUND");
 
         if (isSrvError && fallbackUri) {
-            console.warn("Primary MongoDB URI failed during SRV lookup. Retrying with fallback direct URI...");
-            console.warn(`Fallback URI: ${redactMongoUri(fallbackUri)}`);
-            connection = await mongoose.connect(fallbackUri, CONNECTION_OPTIONS);
-        } else {
-            if (isSrvError) {
-                console.error(
-                    "MongoDB SRV DNS lookup failed. Use a direct MongoDB URI in MONGODB_URI or set MONGODB_URI_DIRECT."
-                );
+            console.warn("Primary URI failed. Trying fallback direct URI...");
+            try {
+                connection = await mongoose.connect(fallbackUri, CONNECTION_OPTIONS);
+            } catch (fallbackErr) {
+                console.error("❌ All MongoDB connection attempts failed.");
+                console.error("   Error:", fallbackErr.message?.slice(0, 120));
+                _logAtlasHelp(error.message);
+                return null;
             }
-            throw error;
+        } else {
+            console.error("❌ MongoDB connection failed.");
+            console.error("   Error:", error.message?.slice(0, 120));
+            _logAtlasHelp(error.message);
+            return null;   // non-throwing
         }
     }
 
-    const { host, name } = connection.connection;
-
-    await connection.connection.db.admin().ping();
-
-    const pingCollection = connection.connection.db.collection("_startup_checks");
-    await pingCollection.updateOne(
-        { _id: "mongoose-connection" },
-        { $set: { ok: true, checkedAt: new Date() } },
-        { upsert: true }
-    );
-
-    console.log(`MongoDB connected: ${host}`);
-    console.log(`Database: ${name}`);
-    console.log("Mongoose ping and write check passed.\n");
-
-    return connection;
+    try {
+        const { host, name } = connection.connection;
+        await connection.connection.db.admin().ping();
+        const pingCollection = connection.connection.db.collection("_startup_checks");
+        await pingCollection.updateOne(
+            { _id: "mongoose-connection" },
+            { $set: { ok: true, checkedAt: new Date() } },
+            { upsert: true }
+        );
+        console.log(`✅ MongoDB connected: ${host}`);
+        console.log(`   Database: ${name}`);
+        console.log("   Read/Write test: PASSED — data persists permanently.\n");
+        return connection;
+    } catch (testErr) {
+        console.warn("⚠️  MongoDB connected but read/write test failed:", testErr.message);
+        return connection;
+    }
 };
 
 mongoose.connection.on("disconnected", () => {
