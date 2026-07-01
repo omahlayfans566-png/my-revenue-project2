@@ -60,7 +60,7 @@ const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any
 // ============================================
 
 export const authAPI = {
-    register: async (formData) => {
+    register: async (formData: Record<string, unknown>) => {
         return apiCall("/auth/register", {
             method: "POST",
             body: JSON.stringify(formData),
@@ -88,7 +88,7 @@ export const authAPI = {
         });
     },
 
-    login: async (email, password) => {
+    login: async (email: string, password: string) => {
         return apiCall("/auth/login", {
             method: "POST",
             body: JSON.stringify({ email, password }),
@@ -184,14 +184,14 @@ export const matchAPI = {
 // ============================================
 
 export const messageAPI = {
-    sendMessage: async (toUserId, content, image = null) => {
+    sendMessage: async (toUserId: string, content: string, image: string | null = null) => {
         return apiCall("/messages/send", {
             method: "POST",
             body: JSON.stringify({ toUserId, content, image }),
         });
     },
 
-    getConversation: async (otherUserId, page = 1, limit = 50) => {
+    getConversation: async (otherUserId: string, page: number = 1, limit: number = 50) => {
         return apiCall(
             `/messages/conversation/${otherUserId}?page=${page}&limit=${limit}`
         );
@@ -201,7 +201,7 @@ export const messageAPI = {
         return apiCall("/messages");
     },
 
-    deleteMessage: async (messageId) => {
+    deleteMessage: async (messageId: string) => {
         return apiCall(`/messages/${messageId}`, {
             method: "DELETE",
         });
@@ -217,14 +217,14 @@ export const paymentAPI = {
         return apiCall("/payment/pricing");
     },
 
-    createPaymentIntent: async (tier, duration = 1) => {
+    createPaymentIntent: async (tier: string, duration: number = 1) => {
         return apiCall("/payment/create-intent", {
             method: "POST",
             body: JSON.stringify({ tier, duration }),
         });
     },
 
-    confirmPayment: async (paymentIntentId, tier, duration = 1) => {
+    confirmPayment: async (paymentIntentId: string, tier: string, duration: number = 1) => {
         return apiCall("/payment/confirm", {
             method: "POST",
             body: JSON.stringify({ paymentIntentId, tier, duration }),
