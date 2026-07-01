@@ -60,7 +60,7 @@ const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any
 // ============================================
 
 export const authAPI = {
-    register: async (formData: Record<string, unknown>) => {
+    register: async <T extends object>(formData: T) => {
         return apiCall("/auth/register", {
             method: "POST",
             body: JSON.stringify(formData),
