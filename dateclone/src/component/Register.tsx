@@ -263,7 +263,7 @@ const Register = () => {
             setSubmitting(true);
             setSubmitErr("");
             try {
-                const res = await authAPI.register(fd as Record<string, unknown>);
+                const res = await authAPI.register(fd as unknown as Record<string, unknown>);
                 setAuthToken(res.token);
                 saveUserToLocal(res.user);
                 setStep(7);
