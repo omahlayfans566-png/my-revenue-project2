@@ -42,7 +42,7 @@ const Chat = () => {
     const [totalUnread, setTotalUnread] = useState(0);
 
     const bottomRef = useRef<HTMLDivElement>(null);
-    const typingTimer = useRef<ReturnType<typeof setTimeout>>();
+    const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const fileRef = useRef<HTMLInputElement>(null);
 
     // ── Load conversations ──────────────────────────────────────────────────────
@@ -188,8 +188,13 @@ const Chat = () => {
         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); return; }
         if (!activeConv) return;
         startTyping(activeConv.user._id);
-        clearTimeout(typingTimer.current);
-        typingTimer.current = setTimeout(() => stopTyping(activeConv.user._id), 2000);
+        if (typingTimer.current !== null) {
+    clearTimeout(typingTimer.current);
+}
+
+typingTimer.current = setTimeout(() => {
+    stopTyping(activeConv.user._id);
+}, 2000);
     };
 
     const handleImagePick = (e: React.ChangeEvent<HTMLInputElement>) => {
