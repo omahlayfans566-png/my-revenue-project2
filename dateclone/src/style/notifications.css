@@ -82,6 +82,37 @@
     margin-bottom: 2px;
 }
 
+.notif-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #222;
+    margin-bottom: 2px;
+}
+
+.notif-text {
+    font-size: 0.88rem;
+    color: #555;
+    font-weight: 400;
+    margin-bottom: 2px;
+}
+
+.notif-delete-btn {
+    border: none;
+    background: none;
+    color: #ccc;
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 6px;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.notif-delete-btn:hover {
+    color: #ff1744;
+    background: rgba(255, 23, 68, 0.08);
+}
+
 .notif-time {
     font-size: 0.78rem;
     color: #aaa;

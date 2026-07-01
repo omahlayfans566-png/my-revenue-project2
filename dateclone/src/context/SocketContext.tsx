@@ -40,11 +40,13 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
         // Only connect once
         if (socketRef.current?.connected) return;
 
+        const token = getAuthToken();
         const socket = io(SOCKET_URL, {
             transports: ["websocket", "polling"],
             reconnection: true,
             reconnectionAttempts: 10,
             reconnectionDelay: 2000,
+            auth: { token },
         });
 
         socketRef.current = socket;

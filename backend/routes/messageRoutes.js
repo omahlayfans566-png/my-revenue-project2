@@ -3,6 +3,7 @@ import { Message } from "../models/Message.js";
 import { Match } from "../models/Match.js";
 import { User } from "../models/User.js";
 import { authenticateToken } from "../middleware/auth.js";
+import { createNotification } from "../services/notificationService.js";
 
 const router = express.Router();
 
@@ -55,6 +56,19 @@ router.post("/send", authenticateToken, async (req, res) => {
         match.messagesSent = (match.messagesSent || 0) + 1;
         match.lastMessageAt = new Date();
         await match.save();
+
+        // Create notification for new message
+        const sender = await User.findById(userId).select("firstName").lean();
+        createNotification({
+            userId: toUserId,
+            type: "message",
+            title: "New Message",
+            message: `New message from ${sender?.firstName || "someone"}`,
+            referenceId: message._id,
+            referenceModel: "Message",
+            icon: "💬",
+            metadata: { fromUserId: userId, conversationId: userId },
+        }).catch(() => {});
 
         res.status(201).json({
             success: true,

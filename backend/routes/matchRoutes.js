@@ -9,6 +9,7 @@ import {
     getNearby,
     calculateCompatibility,
 } from "../services/matchingService.js";
+import { createNotification } from "../services/notificationService.js";
 
 const router = express.Router();
 
@@ -114,6 +115,42 @@ router.post("/like", authenticateToken, async (req, res) => {
             global.io.to(userId).emit("new_match", { with: likedUserId });
         }
 
+        // Create notification for match or like
+        if (match.status === "matched") {
+            const liker = await User.findById(userId).select("firstName").lean();
+            const liked = await User.findById(likedUserId).select("firstName").lean();
+            // Notify both users of the match
+            createNotification({
+                userId,
+                type: "match",
+                title: "It's a Match! 💕",
+                message: `You matched with ${liked?.firstName || "someone"}!`,
+                referenceId: likedUserId,
+                referenceModel: "User",
+                icon: "💞",
+            }).catch(() => {});
+            createNotification({
+                userId: likedUserId,
+                type: "match",
+                title: "It's a Match! 💕",
+                message: `You matched with ${liker?.firstName || "someone"}!`,
+                referenceId: userId,
+                referenceModel: "User",
+                icon: "💞",
+            }).catch(() => {});
+        } else {
+            createNotification({
+                userId: likedUserId,
+                type: "like",
+                title: "New Like",
+                message: `Someone liked your profile!`,
+                referenceId: userId,
+                referenceModel: "User",
+                icon: "❤️",
+                metadata: { fromUserId: userId },
+            }).catch(() => {});
+        }
+
         res.json({
             success: true,
             isMatch: match.status === "matched",
@@ -163,6 +200,41 @@ router.post("/superlike", authenticateToken, async (req, res) => {
                 global.io.to(likedUserId).emit("new_match", { with: userId });
                 global.io.to(userId).emit("new_match", { with: likedUserId });
             }
+        }
+
+        // Create notification for super like or match
+        if (match.status === "matched") {
+            const liker = await User.findById(userId).select("firstName").lean();
+            const liked = await User.findById(likedUserId).select("firstName").lean();
+            createNotification({
+                userId,
+                type: "match",
+                title: "It's a Match! 💕",
+                message: `You matched with ${liked?.firstName || "someone"}!`,
+                referenceId: likedUserId,
+                referenceModel: "User",
+                icon: "💞",
+            }).catch(() => {});
+            createNotification({
+                userId: likedUserId,
+                type: "match",
+                title: "It's a Match! 💕",
+                message: `You matched with ${liker?.firstName || "someone"}!`,
+                referenceId: userId,
+                referenceModel: "User",
+                icon: "💞",
+            }).catch(() => {});
+        } else {
+            createNotification({
+                userId: likedUserId,
+                type: "like",
+                title: "Super Like! ⭐",
+                message: `Someone super liked your profile!`,
+                referenceId: userId,
+                referenceModel: "User",
+                icon: "⭐",
+                metadata: { fromUserId: userId, isSuperLike: true },
+            }).catch(() => {});
         }
 
         res.json({
@@ -241,6 +313,34 @@ router.get("/likes-received", authenticateToken, async (req, res) => {
         });
     } catch (err) {
         res.status(500).json({ success: false, message: "Failed to fetch likes" });
+    }
+});
+
+// ── POST /unmatch ─────────────────────────────────────────────────────────────
+router.post("/unmatch", authenticateToken, async (req, res) => {
+    try {
+        const { userId } = req.user;
+        const { unmatchedUserId } = req.body;
+
+        if (!unmatchedUserId) {
+            return res.status(400).json({ success: false, message: "unmatchedUserId is required" });
+        }
+
+        // Remove the match relationship
+        await Match.deleteMany({
+            $or: [
+                { userId, matchedUserId: unmatchedUserId, status: "matched" },
+                { userId: unmatchedUserId, matchedUserId: userId, status: "matched" },
+            ],
+        });
+
+        res.json({
+            success: true,
+            message: "Unmatched successfully",
+        });
+    } catch (err) {
+        console.error("[Unmatch]", err);
+        res.status(500).json({ success: false, message: "Failed to unmatch" });
     }
 });
 

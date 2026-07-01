@@ -192,6 +192,25 @@
     background: #eee;
 }
 
+.match-action-btn.unmatch {
+    flex: 0 0 auto;
+    width: 36px;
+    padding: 8px 0;
+    background: #fff0f0;
+    color: #ff1744;
+    font-size: 0.85rem;
+    border-radius: 8px;
+}
+
+.match-action-btn.unmatch:hover {
+    background: #ffe0e0;
+}
+
+.match-action-btn.unmatch:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 /* Blurred likes */
 .blurred-img {
     filter: blur(10px);

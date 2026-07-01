@@ -15,6 +15,7 @@ import profileRoutes from "./routes/profileRoutes.js";
 import matchRoutes from "./routes/matchRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import messageRoutes from "./routes/messageRoutes.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { requestLogger } from "./middleware/requestLogger.js";
 
@@ -96,6 +97,7 @@ app.use("/api/profile", profileRoutes);
 app.use("/api/matches", matchRoutes);
 app.use("/api/payment", paymentRoutes);
 app.use("/api/messages", messageRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
@@ -118,11 +120,30 @@ app.use((_req, res) => res.status(404).json({ success: false, message: "Route no
 app.use(errorHandler);
 
 // ── Start ─────────────────────────────────────────────────────────────────────
-// Note: connectDB is non-blocking — the server starts regardless of DB status.
+// connectDB is non-blocking — the server starts regardless of DB status.
 // Auth routes return 503 when DB is not connected.
+
+// Guard: warn if JWT_SECRET is using the insecure default
+if (!process.env.JWT_SECRET) {
+    console.warn("⚠️  JWT_SECRET is not set in backend/.env — using insecure development default.");
+    console.warn("   Set JWT_SECRET in production to protect user sessions.\n");
+}
+
 const start = async () => {
-    // Attempt DB connection (does not throw — falls back gracefully)
-    await connectDB();
+    await connectDB(); // never throws — falls back gracefully
+
+    // Handle EADDRINUSE and other listen errors before they become uncaughtExceptions
+    server.on("error", (err) => {
+        if (err.code === "EADDRINUSE") {
+            console.error(`\n❌ Port ${PORT} is already in use.`);
+            console.error(`   Another process is listening on port ${PORT}.`);
+            console.error(`   Kill it with:  npx kill-port ${PORT}`);
+            console.error(`   Or change PORT in backend/.env to a different number.\n`);
+        } else {
+            console.error("[Server Error]", err.message);
+        }
+        process.exit(1);
+    });
 
     server.listen(PORT, () => {
         const dbStatus = isMongoConnected() ? "✅ MongoDB connected" : "⚠️  Memory mode (MongoDB not connected)";
@@ -137,9 +158,21 @@ const start = async () => {
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
 const shutdown = async () => {
     console.log("\n⏹  Shutting down…");
+    // 1. Stop accepting new Socket.IO connections
+    io.close(() => console.log("   Socket.IO server closed."));
+    // 2. Disconnect from MongoDB
     await mongoose.disconnect();
-    server.close(() => process.exit(0));
-    setTimeout(() => process.exit(1), 8000);
+    console.log("   MongoDB disconnected.");
+    // 3. Close the HTTP server
+    server.close(() => {
+        console.log("   HTTP server closed.");
+        process.exit(0);
+    });
+    // Force exit after 15 seconds if something hangs
+    setTimeout(() => {
+        console.error("   ⚠️  Forced shutdown after timeout.");
+        process.exit(0);
+    }, 15000);
 };
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);

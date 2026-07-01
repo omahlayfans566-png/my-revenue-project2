@@ -171,6 +171,9 @@ export const matchAPI = {
     blockUser: async (blockedUserId: string) =>
         apiCall("/matches/block", { method: "POST", body: JSON.stringify({ blockedUserId }) }),
 
+    unmatchUser: async (unmatchedUserId: string) =>
+        apiCall("/matches/unmatch", { method: "POST", body: JSON.stringify({ unmatchedUserId }) }),
+
     getRecentlyJoined: async () => apiCall("/matches/recently-joined"),
     getRecentlyActive: async () => apiCall("/matches/recently-active"),
     getNearby: async () => apiCall("/matches/nearby"),
@@ -243,6 +246,38 @@ export const paymentAPI = {
 };
 
 // ============================================
+// NOTIFICATION ENDPOINTS
+// ============================================
+
+export const notificationAPI = {
+    getNotifications: async (page: number = 1, limit: number = 20) => {
+        return apiCall(`/notifications?page=${page}&limit=${limit}`);
+    },
+
+    getUnreadCount: async () => {
+        return apiCall("/notifications/unread-count");
+    },
+
+    markAsRead: async (notificationId: string) => {
+        return apiCall(`/notifications/${notificationId}/read`, {
+            method: "PUT",
+        });
+    },
+
+    markAllAsRead: async () => {
+        return apiCall("/notifications/read-all", {
+            method: "PUT",
+        });
+    },
+
+    deleteNotification: async (notificationId: string) => {
+        return apiCall(`/notifications/${notificationId}`, {
+            method: "DELETE",
+        });
+    },
+};
+
+// ============================================
 // UTILITY FUNCTIONS
 // ============================================
 
@@ -278,4 +313,5 @@ export default {
     matchAPI,
     messageAPI,
     paymentAPI,
+    notificationAPI,
 };

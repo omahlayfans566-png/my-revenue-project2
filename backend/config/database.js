@@ -84,7 +84,24 @@ export const connectDB = async () => {
 };
 
 mongoose.connection.on("disconnected", () => {
-    console.warn("MongoDB disconnected.");
+    console.warn("⚠️  MongoDB disconnected — will auto-reconnect...");
+});
+
+mongoose.connection.on("reconnected", () => {
+    console.log("✅ MongoDB reconnected successfully.");
+    // Re-establish the startup ping check after reconnection
+    try {
+        const db = mongoose.connection.db;
+        if (db) {
+            db.admin().ping().then(() => {
+                console.log("   Read/Write check after reconnection: PASSED");
+            }).catch(() => {});
+        }
+    } catch {}
+});
+
+mongoose.connection.on("error", (err) => {
+    console.error("❌ MongoDB connection error:", err.message?.slice(0, 120));
 });
 
 export const isMongoConnected = () => mongoose.connection.readyState === 1;

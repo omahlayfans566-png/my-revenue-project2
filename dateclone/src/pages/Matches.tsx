@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import AppNavbar from "../component/AppNavbar";
 import { matchAPI } from "../services/apiService";
 import "../style/matches.css";
+import { useSocket } from "../context/SocketContext";
 
 interface MatchUser {
     _id: string;
@@ -24,10 +25,12 @@ interface MatchItem {
 
 const Matches = () => {
     const navigate = useNavigate();
+    const { socket } = useSocket();
     const [matches, setMatches] = useState<MatchItem[]>([]);
     const [likes, setLikes] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [tab, setTab] = useState<"matches" | "likes">("matches");
+    const [actionLoading, setActionLoading] = useState<string | null>(null);
 
     useEffect(() => {
         const load = async () => {
@@ -47,6 +50,42 @@ const Matches = () => {
         };
         load();
     }, []);
+
+    // Listen for new match events to refresh
+    useEffect(() => {
+        if (!socket) return;
+        const onNewMatch = () => {
+            matchAPI.getMatches().then(res => setMatches(res.matches || [])).catch(() => {});
+        };
+        socket.on("new_match", onNewMatch);
+        return () => { socket.off("new_match", onNewMatch); };
+    }, [socket]);
+
+    const handleUnmatch = async (matchId: string, userId: string) => {
+        if (!window.confirm("Are you sure you want to unmatch?")) return;
+        setActionLoading(matchId);
+        try {
+            await matchAPI.unmatchUser(userId);
+            setMatches(prev => prev.filter(m => m._id !== matchId));
+        } catch {
+            alert("Failed to unmatch. Please try again.");
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleBlock = async (userId: string) => {
+        if (!window.confirm("Block this user? They won't be able to see your profile.")) return;
+        setActionLoading(userId);
+        try {
+            await matchAPI.blockUser(userId);
+            setMatches(prev => prev.filter(m => m.user._id !== userId));
+        } catch {
+            alert("Failed to block user.");
+        } finally {
+            setActionLoading(null);
+        }
+    };
 
     const initials = (u: MatchUser) =>
         `${u.firstName?.[0] ?? ""}${u.lastName?.[0] ?? ""}`.toUpperCase();
@@ -115,6 +154,17 @@ const Matches = () => {
                                         </button>
                                         <button className="match-action-btn view" onClick={(e) => { e.stopPropagation(); navigate(`/profile/${m.user._id}`); }}>
                                             👤 Profile
+                                        </button>
+                                        <button
+                                            className="match-action-btn unmatch"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleUnmatch(m._id, m.user._id);
+                                            }}
+                                            disabled={actionLoading === m._id}
+                                            title="Unmatch"
+                                        >
+                                            {actionLoading === m._id ? "..." : "✕"}
                                         </button>
                                     </div>
                                 </div>

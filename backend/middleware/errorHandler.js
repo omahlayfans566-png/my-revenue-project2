@@ -1,6 +1,9 @@
 export const errorHandler = (err, _req, res, _next) => {
     const status = err.status || err.statusCode || 500;
     console.error(`[Error ${status}]`, err.message);
+    if (process.env.NODE_ENV !== "production") {
+        console.error("   Stack:", err.stack?.split("\n").slice(0, 6).join("\n   "));
+    }
     res.status(status).json({
         success: false,
         message: process.env.NODE_ENV === "production"

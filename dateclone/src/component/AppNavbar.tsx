@@ -1,14 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { notificationAPI } from "../services/apiService";
+import { useSocket } from "../context/SocketContext";
 import "../style/appNavbar.css";
 
 const AppNavbar = ({ unreadMessages = 0 }: { unreadMessages?: number }) => {
     const { user, logout } = useAuth();
+    const { socket } = useSocket();
     const location = useLocation();
     const navigate = useNavigate();
     const [menuOpen, setMenuOpen] = useState(false);
     const [profileOpen, setProfileOpen] = useState(false);
+    const [unreadNotifications, setUnreadNotifications] = useState(0);
 
     const isActive = (path: string) => location.pathname.startsWith(path);
 
@@ -16,6 +20,22 @@ const AppNavbar = ({ unreadMessages = 0 }: { unreadMessages?: number }) => {
         logout();
         navigate("/");
     };
+
+    // Load unread notification count
+    useEffect(() => {
+        if (!user) return;
+        notificationAPI.getUnreadCount()
+            .then(res => setUnreadNotifications(res.count || 0))
+            .catch(() => {});
+    }, [user]);
+
+    // Listen for real-time notification count updates
+    useEffect(() => {
+        if (!socket) return;
+        const onUnreadCount = ({ count }: { count: number }) => setUnreadNotifications(count);
+        socket.on("unread_notification_count", onUnreadCount);
+        return () => { socket.off("unread_notification_count", onUnreadCount); };
+    }, [socket]);
 
     const initials = user
         ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase()
@@ -49,6 +69,9 @@ const AppNavbar = ({ unreadMessages = 0 }: { unreadMessages?: number }) => {
                     <li>
                         <Link to="/notifications" className={isActive("/notifications") ? "active" : ""}>
                             <span className="nav-icon">🔔</span> Notifications
+                            {unreadNotifications > 0 && (
+                                <span className="nav-badge">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>
+                            )}
                         </Link>
                     </li>
                 </ul>
@@ -102,7 +125,12 @@ const AppNavbar = ({ unreadMessages = 0 }: { unreadMessages?: number }) => {
                     <Link to="/discover" onClick={() => setMenuOpen(false)}>🔥 Discover</Link>
                     <Link to="/matches" onClick={() => setMenuOpen(false)}>💞 Matches</Link>
                     <Link to="/chat" onClick={() => setMenuOpen(false)}>💬 Messages</Link>
-                    <Link to="/notifications" onClick={() => setMenuOpen(false)}>🔔 Notifications</Link>
+                    <Link to="/notifications" onClick={() => setMenuOpen(false)}>
+                        🔔 Notifications
+                        {unreadNotifications > 0 && (
+                            <span className="nav-badge-mobile">{unreadNotifications}</span>
+                        )}
+                    </Link>
                     <Link to="/profile" onClick={() => setMenuOpen(false)}>👤 My Profile</Link>
                     <Link to="/profile/edit" onClick={() => setMenuOpen(false)}>✏️ Edit Profile</Link>
                     <Link to="/settings" onClick={() => setMenuOpen(false)}>⚙️ Settings</Link>
@@ -124,6 +152,9 @@ const AppNavbar = ({ unreadMessages = 0 }: { unreadMessages?: number }) => {
                 </Link>
                 <Link to="/notifications" className={isActive("/notifications") ? "active" : ""}>
                     <span>🔔</span><span>Alerts</span>
+                    {unreadNotifications > 0 && (
+                        <span className="bottom-nav-badge">{unreadNotifications > 9 ? "9+" : unreadNotifications}</span>
+                    )}
                 </Link>
                 <Link to="/profile" className={isActive("/profile") ? "active" : ""}>
                     <span>👤</span><span>Profile</span>
