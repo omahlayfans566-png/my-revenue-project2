@@ -25,22 +25,43 @@ const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
-const ALLOWED_ORIGINS = [
-    "http://localhost:5173", "http://localhost:5174",
-    "http://localhost:5175", "http://localhost:5176",
+// IMPORTANT: Read ALLOWED_ORIGINS inside the callback, not at module load.
+// On Render, process.env.FRONTEND_URL may not be available at module parse time
+// depending on the platform's env injection order.
+const getAllowedOrigins = () => [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:5175",
+    "http://localhost:5176",
     process.env.FRONTEND_URL,
 ].filter(Boolean);
 
 const corsOptions = {
     origin: (origin, cb) => {
+        // Allow server-to-server requests (no Origin header)
         if (!origin) return cb(null, true);
-        if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-        if (process.env.NODE_ENV !== "production" && origin.startsWith("http://localhost")) return cb(null, true);
-        cb(new Error(`CORS blocked: ${origin}`));
+
+        const allowed = getAllowedOrigins();
+
+        // Allow any localhost origin in development
+        if (process.env.NODE_ENV !== "production" && origin.startsWith("http://localhost")) {
+            return cb(null, true);
+        }
+
+        if (allowed.includes(origin)) {
+            return cb(null, true);
+        }
+
+        // Return cb(null, false) — NOT cb(new Error(...))
+        // Throwing an error causes Express to return 500, which breaks the preflight.
+        // Returning false sends no CORS headers, which correctly blocks the request.
+        console.warn(`[CORS] Blocked origin: ${origin} | Allowed: ${allowed.join(", ")}`);
+        return cb(null, false);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
+    optionsSuccessStatus: 204,   // some legacy browsers choke on 204, but Render needs this
 };
 
 // ── Socket.io ─────────────────────────────────────────────────────────────────
