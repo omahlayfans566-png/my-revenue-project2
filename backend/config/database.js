@@ -13,6 +13,9 @@ const CONNECTION_OPTIONS = {
 const redactMongoUri = (uri) =>
     uri.replace(/\/\/([^:]+):([^@]+)@/, "//$1:<redacted>@");
 
+// Guard: prevent concurrent connection attempts
+let _connecting = false;
+
 const _logAtlasHelp = (errMsg = "") => {
     console.error("   Action required:");
     if (errMsg.includes("Authentication") || errMsg.includes("bad auth")) {
@@ -23,16 +26,22 @@ const _logAtlasHelp = (errMsg = "") => {
         console.error("   [3] Connect to mobile hotspot if home router blocks port 27017");
     }
     console.error("   ⚡ Server will run in memory mode until MongoDB connects.\n");
-    // Auto-retry after 30 seconds
+    // Auto-retry after 30 seconds — guarded by _connecting flag
     setTimeout(() => connectDB(), 30000);
 };
 
 export const connectDB = async () => {
+    // Guard: don't start a new connection while one is already in progress
+    if (_connecting) return null;
+    if (isMongoConnected()) return mongoose.connection;
+    _connecting = true;
+
     const uri = process.env.MONGODB_URI;
     const fallbackUri = process.env.MONGODB_URI_DIRECT || process.env.MONGODB_FALLBACK_URI;
 
     if (!uri) {
         console.error("❌ MONGODB_URI is not set in backend/.env");
+        _connecting = false;
         return null;   // non-throwing — server continues in memory mode
     }
 
@@ -53,12 +62,14 @@ export const connectDB = async () => {
             } catch (fallbackErr) {
                 console.error("❌ All MongoDB connection attempts failed.");
                 console.error("   Error:", fallbackErr.message?.slice(0, 120));
+                _connecting = false;
                 _logAtlasHelp(error.message);
                 return null;
             }
         } else {
             console.error("❌ MongoDB connection failed.");
             console.error("   Error:", error.message?.slice(0, 120));
+            _connecting = false;
             _logAtlasHelp(error.message);
             return null;   // non-throwing
         }
@@ -95,9 +106,9 @@ mongoose.connection.on("reconnected", () => {
         if (db) {
             db.admin().ping().then(() => {
                 console.log("   Read/Write check after reconnection: PASSED");
-            }).catch(() => {});
+            }).catch(() => { });
         }
-    } catch {}
+    } catch { }
 });
 
 mongoose.connection.on("error", (err) => {
