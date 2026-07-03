@@ -6,7 +6,7 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || "https://dateclone-backend.onrender.com/api";
 
 // Helper to get auth token (internal use only)
-const _getToken = (): string | null => localStorage.getItem("authToken");
+const _getToken = (): string | null => sessionStorage.getItem("authToken");
 
 // Helper function for API requests with auth
 const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any> => {
@@ -100,8 +100,8 @@ export const authAPI = {
     },
 
     logout: () => {
-        localStorage.removeItem("authToken");
-        localStorage.removeItem("user");
+        sessionStorage.removeItem("authToken");
+        sessionStorage.removeItem("user");
     },
 };
 
@@ -282,11 +282,11 @@ export const notificationAPI = {
 // ============================================
 
 export const setAuthToken = (token: string) => {
-    localStorage.setItem("authToken", token);
+    sessionStorage.setItem("authToken", token);
 };
 
 export const getAuthToken = (): string | null => {
-    return localStorage.getItem("authToken");
+    return sessionStorage.getItem("authToken");
 };
 
 export const isAuthenticated = (): boolean => {
@@ -294,17 +294,17 @@ export const isAuthenticated = (): boolean => {
 };
 
 export const saveUserToLocal = (user: object) => {
-    localStorage.setItem("user", JSON.stringify(user));
+    sessionStorage.setItem("user", JSON.stringify(user));
 };
 
 export const getUserFromLocal = () => {
-    const user = localStorage.getItem("user");
+    const user = sessionStorage.getItem("user");
     return user ? JSON.parse(user) : null;
 };
 
 export const clearAuthData = () => {
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("user");
+    sessionStorage.removeItem("authToken");
+    sessionStorage.removeItem("user");
 };
 
 export default {

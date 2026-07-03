@@ -82,13 +82,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     clearAuthData();
                     setUser(null);
                 }
-                // Otherwise: keep cached user from localStorage so the app still
+                // Otherwise: keep cached user from sessionStorage so the app still
                 // works while the server is starting up or DB is connecting.
             } finally {
                 setLoading(false);
             }
         };
         init();
+    }, []);
+
+    // ── Automatic logout on tab close / refresh / navigate away ──────────
+    // sessionStorage is cleared when the browser tab is closed, but it
+    // persists across page reloads (F5).  The beforeunload handler clears
+    // auth data just before the page unloads, so on the next page load
+    // the token is gone and the user is redirected to login.
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            if (getAuthToken()) {
+                clearAuthData();
+            }
+        };
+        window.addEventListener("beforeunload", handleBeforeUnload);
+        return () => window.removeEventListener("beforeunload", handleBeforeUnload);
     }, []);
 
     const login = useCallback(async (email: string, password: string) => {

@@ -101,10 +101,18 @@ io.on("connection", (socket) => {
     });
 });
 
-// ── Security & parsing middleware ─────────────────────────────────────────────
-app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" }, contentSecurityPolicy: false }));
+// ── CORS & Security middleware ───────────────────────────────────────────────
+// CORS MUST come before helmet. Helmet's default crossOriginEmbedderPolicy
+// (require-corp) and crossOriginOpenerPolicy (same-origin) add response
+// headers that cause production CORS preflight (OPTIONS) to return 500.
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
+app.use(helmet({ 
+    crossOriginResourcePolicy: { policy: "cross-origin" }, 
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: false,
+}));
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 if (process.env.NODE_ENV !== "production") app.use(requestLogger);
