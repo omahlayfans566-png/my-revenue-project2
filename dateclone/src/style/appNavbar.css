@@ -3,8 +3,8 @@
     position: sticky;
     top: 0;
     z-index: 1000;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(12px);
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(16px) saturate(1.2);
     border-bottom: 1px solid rgba(255, 23, 68, 0.08);
     box-shadow: 0 2px 20px rgba(0, 0, 0, 0.06);
 }
@@ -22,11 +22,11 @@
 /* Logo */
 .app-nav-logo {
     font-size: 1.5rem;
-    font-weight: 800;
+    font-weight: 900;
     color: #ff1744;
     text-decoration: none;
     white-space: nowrap;
-    letter-spacing: -0.5px;
+    letter-spacing: -0.03em;
 }
 
 .app-nav-logo span {
@@ -49,7 +49,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 14px;
+    padding: 9px 16px;
     border-radius: 10px;
     text-decoration: none;
     font-weight: 600;
@@ -135,21 +135,21 @@
 
 /* Upgrade button */
 .app-nav-upgrade {
-    padding: 7px 16px;
-    background: linear-gradient(135deg, #ff1744, #ff4081);
+    padding: 8px 18px;
+    background: var(--grad-brand);
     color: white;
-    border-radius: 20px;
+    border-radius: 50px;
     font-weight: 700;
     font-size: 0.82rem;
     text-decoration: none;
-    transition: all 0.3s ease;
-    box-shadow: 0 3px 12px rgba(255, 23, 68, 0.3);
+    transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+    box-shadow: 0 4px 14px rgba(255, 23, 68, 0.3);
     white-space: nowrap;
 }
 
 .app-nav-upgrade:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 5px 18px rgba(255, 23, 68, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 23, 68, 0.4);
 }
 
 /* Profile dropdown trigger */
@@ -159,7 +159,7 @@
     align-items: center;
     gap: 8px;
     cursor: pointer;
-    padding: 6px 12px;
+    padding: 6px 14px;
     border-radius: 50px;
     border: 1.5px solid #e8e8e8;
     background: white;
@@ -201,19 +201,18 @@
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12);
     min-width: 190px;
     overflow: hidden;
-    animation: dropIn 0.2s ease;
+    animation: dropIn 0.25s cubic-bezier(0.22, 1, 0.36, 1);
     z-index: 999;
 }
 
 @keyframes dropIn {
     from {
         opacity: 0;
-        transform: translateY(-8px);
+        transform: translateY(-10px) scale(0.97);
     }
-
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateY(0) scale(1);
     }
 }
 
@@ -227,7 +226,7 @@
     text-decoration: none;
     font-size: 0.9rem;
     font-weight: 500;
-    transition: background 0.2s;
+    transition: all 0.2s;
     width: 100%;
     text-align: left;
     border: none;
@@ -237,7 +236,7 @@
 
 .app-nav-dropdown a:hover,
 .app-nav-dropdown button:hover {
-    background: #fafafa;
+    background: rgba(255, 23, 68, 0.06);
     color: #ff1744;
 }
 
@@ -260,7 +259,13 @@
     background: none;
     border: none;
     cursor: pointer;
-    padding: 4px;
+    padding: 6px;
+    border-radius: 8px;
+    transition: background 0.2s;
+}
+
+.app-hamburger:hover {
+    background: rgba(255, 23, 68, 0.06);
 }
 
 .app-hamburger span {
@@ -289,20 +294,26 @@
     display: none;
     flex-direction: column;
     background: white;
-    border-top: 1px solid #f0f0f0;
-    padding: 12px 16px 16px;
+    border-top: 1px solid rgba(255, 23, 68, 0.06);
+    padding: 16px 20px 20px;
     gap: 4px;
+    animation: mobileMenuIn 0.2s ease;
+}
+
+@keyframes mobileMenuIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 .app-mobile-menu a,
 .app-mobile-menu button {
-    padding: 12px 16px;
-    border-radius: 10px;
+    padding: 13px 18px;
+    border-radius: 12px;
     text-decoration: none;
     color: #333;
-    font-weight: 500;
+    font-weight: 600;
     font-size: 0.95rem;
-    transition: background 0.2s;
+    transition: all 0.2s;
     display: block;
     border: none;
     background: none;
@@ -318,6 +329,9 @@
 .mobile-logout {
     color: #ff1744 !important;
     font-weight: 700 !important;
+    border-top: 1px solid #f5f5f5 !important;
+    margin-top: 4px;
+    padding-top: 16px !important;
 }
 
 /* Bottom mobile nav (fixed bottom bar) */
@@ -327,8 +341,9 @@
     bottom: 0;
     left: 0;
     right: 0;
-    background: white;
-    border-top: 1px solid #f0f0f0;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(255, 23, 68, 0.08);
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
     z-index: 999;
     padding: 6px 0;
@@ -346,7 +361,7 @@
     color: #999;
     font-size: 0.68rem;
     font-weight: 600;
-    transition: color 0.2s;
+    transition: all 0.2s;
     position: relative;
 }
 

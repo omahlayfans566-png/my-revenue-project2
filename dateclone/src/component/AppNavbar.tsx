@@ -26,7 +26,7 @@ const AppNavbar = ({ unreadMessages = 0 }: { unreadMessages?: number }) => {
         if (!user) return;
         notificationAPI.getUnreadCount()
             .then(res => setUnreadNotifications(res.count || 0))
-            .catch(() => {});
+            .catch(() => { });
     }, [user]);
 
     // Listen for real-time notification count updates
@@ -45,12 +45,17 @@ const AppNavbar = ({ unreadMessages = 0 }: { unreadMessages?: number }) => {
         <nav className="app-navbar">
             <div className="app-navbar-inner">
                 {/* Logo */}
-                <Link to="/discover" className="app-nav-logo">
+                <Link to="/dashboard" className="app-nav-logo">
                     DateClone <span>💕</span>
                 </Link>
 
                 {/* Desktop nav links */}
                 <ul className="app-nav-links">
+                    <li>
+                        <Link to="/dashboard" className={isActive("/dashboard") ? "active" : ""}>
+                            <span className="nav-icon">🏠</span> Home
+                        </Link>
+                    </li>
                     <li>
                         <Link to="/discover" className={isActive("/discover") ? "active" : ""}>
                             <span className="nav-icon">🔥</span> Discover
@@ -64,6 +69,9 @@ const AppNavbar = ({ unreadMessages = 0 }: { unreadMessages?: number }) => {
                     <li>
                         <Link to="/chat" className={isActive("/chat") ? "active" : ""}>
                             <span className="nav-icon">💬</span> Messages
+                            {unreadMessages > 0 && (
+                                <span className="nav-badge">{unreadMessages > 99 ? "99+" : unreadMessages}</span>
+                            )}
                         </Link>
                     </li>
                     <li>
@@ -122,9 +130,15 @@ const AppNavbar = ({ unreadMessages = 0 }: { unreadMessages?: number }) => {
             {/* Mobile menu */}
             {menuOpen && (
                 <div className="app-mobile-menu">
+                    <Link to="/dashboard" onClick={() => setMenuOpen(false)}>🏠 Dashboard</Link>
                     <Link to="/discover" onClick={() => setMenuOpen(false)}>🔥 Discover</Link>
                     <Link to="/matches" onClick={() => setMenuOpen(false)}>💞 Matches</Link>
-                    <Link to="/chat" onClick={() => setMenuOpen(false)}>💬 Messages</Link>
+                    <Link to="/chat" onClick={() => setMenuOpen(false)}>
+                        💬 Messages
+                        {unreadMessages > 0 && (
+                            <span className="nav-badge-mobile">{unreadMessages}</span>
+                        )}
+                    </Link>
                     <Link to="/notifications" onClick={() => setMenuOpen(false)}>
                         🔔 Notifications
                         {unreadNotifications > 0 && (
@@ -141,6 +155,9 @@ const AppNavbar = ({ unreadMessages = 0 }: { unreadMessages?: number }) => {
 
             {/* Bottom mobile nav (always visible on mobile when authenticated) */}
             <div className="app-bottom-nav">
+                <Link to="/dashboard" className={isActive("/dashboard") ? "active" : ""}>
+                    <span>🏠</span><span>Home</span>
+                </Link>
                 <Link to="/discover" className={isActive("/discover") ? "active" : ""}>
                     <span>🔥</span><span>Discover</span>
                 </Link>
@@ -149,11 +166,8 @@ const AppNavbar = ({ unreadMessages = 0 }: { unreadMessages?: number }) => {
                 </Link>
                 <Link to="/chat" className={isActive("/chat") ? "active" : ""}>
                     <span>💬</span><span>Chat</span>
-                </Link>
-                <Link to="/notifications" className={isActive("/notifications") ? "active" : ""}>
-                    <span>🔔</span><span>Alerts</span>
-                    {unreadNotifications > 0 && (
-                        <span className="bottom-nav-badge">{unreadNotifications > 9 ? "9+" : unreadNotifications}</span>
+                    {unreadMessages > 0 && (
+                        <span className="bottom-nav-badge">{unreadMessages > 9 ? "9+" : unreadMessages}</span>
                     )}
                 </Link>
                 <Link to="/profile" className={isActive("/profile") ? "active" : ""}>

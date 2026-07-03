@@ -12,8 +12,8 @@
 /* ── Feed Tabs ───────────────────────────────────────────────────────────────── */
 .discover-tabs {
     display: flex;
-    gap: 4px;
-    padding: 12px 0 8px;
+    gap: 6px;
+    padding: 16px 0 12px;
     overflow-x: auto;
     scrollbar-width: none;
 }
@@ -25,12 +25,12 @@
 .discover-tab {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 7px 14px;
+    gap: 6px;
+    padding: 8px 16px;
     border-radius: 50px;
     border: 1.5px solid #e8e8e8;
     background: white;
-    font-size: 0.82rem;
+    font-size: 0.84rem;
     font-weight: 600;
     color: #666;
     cursor: pointer;
@@ -46,7 +46,7 @@
 }
 
 .discover-tab.active {
-    background: linear-gradient(135deg, #ff1744, #ff4081);
+    background: var(--grad-brand);
     border-color: transparent;
     color: white;
     box-shadow: 0 4px 14px rgba(255, 23, 68, 0.3);
@@ -56,8 +56,8 @@
     background: #4caf50;
     color: white;
     border-radius: 50%;
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     font-size: 0.65rem;
     display: flex;
     align-items: center;
@@ -85,8 +85,8 @@
 }
 
 .discover-spinner {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border: 4px solid rgba(255, 23, 68, 0.15);
     border-top-color: #ff1744;
     border-radius: 50%;
@@ -134,7 +134,7 @@
 .swipe-photo {
     position: relative;
     width: 100%;
-    height: 420px;
+    height: 440px;
     overflow: hidden;
     background: linear-gradient(135deg, #fce4ec, #f8bbd0);
     cursor: pointer;
@@ -149,7 +149,7 @@
 }
 
 .swipe-photo:hover img {
-    transform: scale(1.02);
+    transform: scale(1.03);
 }
 
 .swipe-photo-placeholder {
@@ -158,10 +158,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 5rem;
-    font-weight: 800;
+    font-size: 5.5rem;
+    font-weight: 900;
     color: white;
-    background: linear-gradient(135deg, #ff1744, #ff4081);
+    background: var(--grad-brand);
 }
 
 /* Photo navigation */
@@ -186,11 +186,11 @@
 /* Photo dots */
 .photo-dots {
     position: absolute;
-    top: 10px;
+    top: 12px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
-    gap: 5px;
+    gap: 6px;
     z-index: 3;
 }
 
@@ -205,18 +205,18 @@
 
 .photo-dot.active {
     background: white;
-    width: 20px;
+    width: 24px;
     border-radius: 3px;
 }
 
 /* Badges */
 .swipe-badges {
     position: absolute;
-    top: 12px;
-    right: 12px;
+    top: 14px;
+    right: 14px;
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: 6px;
     align-items: flex-end;
     z-index: 3;
 }
@@ -224,7 +224,7 @@
 .badge-compat {
     background: rgba(255, 23, 68, 0.9);
     color: white;
-    padding: 4px 10px;
+    padding: 5px 12px;
     border-radius: 20px;
     font-size: 0.75rem;
     font-weight: 700;
@@ -234,7 +234,7 @@
 .badge-verified {
     background: rgba(76, 175, 80, 0.9);
     color: white;
-    padding: 4px 10px;
+    padding: 5px 12px;
     border-radius: 20px;
     font-size: 0.72rem;
     font-weight: 700;
@@ -251,24 +251,23 @@
 /* Swipe stamp overlays */
 .swipe-stamp {
     position: absolute;
-    top: 28px;
-    font-size: 1.8rem;
+    top: 32px;
+    font-size: 2rem;
     font-weight: 900;
-    letter-spacing: 2px;
-    border-radius: 8px;
-    padding: 6px 16px;
+    letter-spacing: 3px;
+    border-radius: 10px;
+    padding: 8px 20px;
     z-index: 10;
     border: 4px solid;
     transform: rotate(-15deg);
-    animation: stampIn 0.15s ease;
+    animation: stampIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @keyframes stampIn {
     from {
         opacity: 0;
-        transform: rotate(-15deg) scale(0.7);
+        transform: rotate(-15deg) scale(0.6);
     }
-
     to {
         opacity: 1;
         transform: rotate(-15deg) scale(1);
@@ -305,26 +304,26 @@
     left: 0;
     right: 0;
     background: linear-gradient(to top, rgba(0, 0, 0, 0.82) 0%, transparent 100%);
-    padding: 48px 20px 16px;
+    padding: 52px 20px 18px;
     color: white;
 }
 
 .swipe-overlay h2 {
-    font-size: 1.6rem;
-    font-weight: 800;
+    font-size: 1.7rem;
+    font-weight: 900;
     margin-bottom: 4px;
 }
 
 .swipe-location,
 .swipe-occupation {
-    font-size: 0.88rem;
+    font-size: 0.9rem;
     opacity: 0.9;
     margin-bottom: 2px;
 }
 
 /* Bio */
 .swipe-bio {
-    padding: 14px 18px 0;
+    padding: 16px 20px 0;
 }
 
 .swipe-bio p {
@@ -337,16 +336,16 @@
 .swipe-interests {
     display: flex;
     flex-wrap: wrap;
-    gap: 7px;
-    padding: 10px 18px;
+    gap: 8px;
+    padding: 12px 20px;
 }
 
 .swipe-tag {
-    padding: 4px 11px;
+    padding: 5px 12px;
     background: rgba(255, 23, 68, 0.08);
     color: #ff1744;
     border-radius: 20px;
-    font-size: 0.76rem;
+    font-size: 0.78rem;
     font-weight: 700;
 }
 
@@ -355,21 +354,21 @@
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
-    padding: 6px 18px 0;
-    font-size: 0.8rem;
+    padding: 8px 20px 0;
+    font-size: 0.82rem;
     color: #888;
 }
 
 /* View profile */
 .swipe-view-btn {
     display: block;
-    width: calc(100% - 36px);
-    margin: 8px 18px 0;
-    padding: 9px;
+    width: calc(100% - 40px);
+    margin: 10px 20px 0;
+    padding: 10px;
     background: none;
     border: 1.5px solid #e8e8e8;
-    border-radius: 10px;
-    font-size: 0.85rem;
+    border-radius: 12px;
+    font-size: 0.87rem;
     font-weight: 600;
     color: #555;
     cursor: pointer;
@@ -387,8 +386,8 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 18px;
-    padding: 16px 20px;
+    gap: 20px;
+    padding: 18px 20px;
 }
 
 .action-btn {
@@ -399,12 +398,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.4rem;
+    font-size: 1.5rem;
 }
 
 .action-pass {
-    width: 58px;
-    height: 58px;
+    width: 60px;
+    height: 60px;
     background: white;
     border: 2px solid #ffcdd2;
     box-shadow: 0 4px 16px rgba(229, 57, 53, 0.15);
@@ -412,13 +411,13 @@
 
 .action-pass:hover:not(:disabled) {
     background: #ffebee;
-    transform: scale(1.1);
+    transform: scale(1.12);
     box-shadow: 0 8px 24px rgba(229, 57, 53, 0.3);
 }
 
 .action-superlike {
-    width: 50px;
-    height: 50px;
+    width: 52px;
+    height: 52px;
     background: white;
     border: 2px solid #bbdefb;
     box-shadow: 0 4px 16px rgba(59, 130, 246, 0.15);
@@ -426,14 +425,14 @@
 
 .action-superlike:hover:not(:disabled) {
     background: #e3f2fd;
-    transform: scale(1.12) translateY(-4px);
+    transform: scale(1.15) translateY(-4px);
     box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3);
 }
 
 .action-like {
-    width: 68px;
-    height: 68px;
-    background: linear-gradient(135deg, #ff1744, #ff4081);
+    width: 72px;
+    height: 72px;
+    background: var(--grad-brand);
     box-shadow: 0 6px 22px rgba(255, 23, 68, 0.4);
 }
 
@@ -456,7 +455,7 @@
     text-align: center;
     font-size: 0.72rem;
     color: #ccc;
-    padding-bottom: 14px;
+    padding-bottom: 16px;
     margin: 0;
 }
 
@@ -464,7 +463,7 @@
 .swipe-progress {
     display: flex;
     gap: 6px;
-    margin-top: 12px;
+    margin-top: 14px;
     align-items: center;
     justify-content: center;
 }
@@ -479,7 +478,7 @@
 
 .progress-dot.active {
     background: #ff1744;
-    transform: scale(1.3);
+    transform: scale(1.4);
 }
 
 .progress-dot.done {
@@ -496,7 +495,7 @@
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(6px);
+    backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -507,11 +506,11 @@
 .match-modal {
     background: white;
     border-radius: 28px;
-    padding: 48px 36px;
+    padding: 52px 40px;
     text-align: center;
     max-width: 380px;
     width: 100%;
-    animation: matchPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    animation: matchPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
     box-shadow: 0 32px 80px rgba(255, 23, 68, 0.25);
     position: relative;
     overflow: hidden;
@@ -520,9 +519,8 @@
 @keyframes matchPop {
     from {
         opacity: 0;
-        transform: scale(0.6);
+        transform: scale(0.5);
     }
-
     to {
         opacity: 1;
         transform: scale(1);
@@ -541,39 +539,20 @@
 
 .confetti-piece {
     position: absolute;
-    font-size: 1.4rem;
-    animation: confettiFall 1.5s ease-out forwards;
+    font-size: 1.5rem;
+    animation: confettiFall 1.8s ease-out forwards;
     top: -20px;
 }
 
-.confetti-piece:nth-child(1) {
-    left: 10%;
-    animation-delay: 0s;
-}
-
-.confetti-piece:nth-child(2) {
-    left: 30%;
-    animation-delay: 0.1s;
-}
-
-.confetti-piece:nth-child(3) {
-    left: 50%;
-    animation-delay: 0.2s;
-}
-
-.confetti-piece:nth-child(4) {
-    left: 70%;
-    animation-delay: 0.15s;
-}
-
-.confetti-piece:nth-child(5) {
-    left: 90%;
-    animation-delay: 0.05s;
-}
+.confetti-piece:nth-child(1) { left: 10%; animation-delay: 0s; }
+.confetti-piece:nth-child(2) { left: 30%; animation-delay: 0.12s; }
+.confetti-piece:nth-child(3) { left: 50%; animation-delay: 0.24s; }
+.confetti-piece:nth-child(4) { left: 70%; animation-delay: 0.18s; }
+.confetti-piece:nth-child(5) { left: 90%; animation-delay: 0.06s; }
 
 @keyframes confettiFall {
     to {
-        transform: translateY(400px) rotate(720deg);
+        transform: translateY(450px) rotate(720deg);
         opacity: 0;
     }
 }
@@ -586,27 +565,27 @@
 }
 
 .match-avatar {
-    width: 88px;
-    height: 88px;
+    width: 96px;
+    height: 96px;
     border-radius: 50%;
     object-fit: cover;
     border: 4px solid #ff4081;
 }
 
 .match-avatar-placeholder {
-    background: linear-gradient(135deg, #ff1744, #ff4081);
+    background: var(--grad-brand);
     display: flex;
     align-items: center;
     justify-content: center;
     color: white;
-    font-size: 1.6rem;
-    font-weight: 800;
+    font-size: 1.8rem;
+    font-weight: 900;
 }
 
 .match-modal h2 {
-    font-size: 2rem;
+    font-size: 2.2rem;
     font-weight: 900;
-    background: linear-gradient(135deg, #ff1744, #ff4081);
+    background: var(--grad-brand);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -632,25 +611,25 @@
     }
 
     .swipe-photo {
-        height: 360px;
+        height: 380px;
     }
 
     .action-pass {
-        width: 52px;
-        height: 52px;
+        width: 54px;
+        height: 54px;
     }
 
     .action-superlike {
-        width: 44px;
-        height: 44px;
+        width: 46px;
+        height: 46px;
     }
 
     .action-like {
-        width: 62px;
-        height: 62px;
+        width: 66px;
+        height: 66px;
     }
 
     .match-modal {
-        padding: 36px 22px;
+        padding: 40px 24px;
     }
 }

@@ -13,6 +13,7 @@ import Privacy from "./pages/Privacy";
 import Premium from "./pages/Premium";
 
 // Authenticated pages
+import Dashboard from "./pages/Dashboard";
 import Discover from "./pages/Discover";
 import Matches from "./pages/Matches";
 import Chat from "./pages/Chat";
@@ -36,7 +37,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 const PublicOnlyRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated, loading } = useAuth();
   if (loading) return <div className="app-loading">💕</div>;
-  return !isAuthenticated ? <>{children}</> : <Navigate to="/discover" replace />;
+  return !isAuthenticated ? <>{children}</> : <Navigate to="/dashboard" replace />;
 };
 
 function AppRoutes() {
@@ -56,6 +57,7 @@ function AppRoutes() {
       <Route path="/register" element={<PublicOnlyRoute><Register /></PublicOnlyRoute>} />
 
       {/* Protected */}
+      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/discover" element={<ProtectedRoute><Discover /></ProtectedRoute>} />
       <Route path="/matches" element={<ProtectedRoute><Matches /></ProtectedRoute>} />
       <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />

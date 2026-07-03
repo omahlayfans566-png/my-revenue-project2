@@ -574,6 +574,8 @@ router.get("/me", authenticateToken, async (req, res) => {
                 .json({ success: false, message: "User not found." });
         }
 
+        // Return the full user document (minus sensitive fields) so the frontend
+        // can populate EditProfile and Profile pages with all stored data.
         return res.json({ success: true, user });
     } catch (err) {
         console.error("[Me]", err);

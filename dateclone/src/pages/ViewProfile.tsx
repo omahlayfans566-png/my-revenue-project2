@@ -22,8 +22,15 @@ const ViewProfile = () => {
     const handleLike = async () => {
         try {
             const res = await matchAPI.likeUser(userId!);
-            setActionMsg(res.match?.status === "matched" ? "💞 It's a match!" : "❤️ Liked!");
-        } catch (e: any) { setActionMsg(e.message); }
+            setActionMsg(res.isMatch ? "💞 It's a match!" : "❤️ Liked!");
+        } catch (e: any) { setActionMsg(e.message || "Failed to like."); }
+    };
+
+    const handleSuperLike = async () => {
+        try {
+            const res = await matchAPI.superLikeUser(userId!);
+            setActionMsg(res.isMatch ? "💞 It's a match!" : "⭐ Super Liked!");
+        } catch (e: any) { setActionMsg(e.message || "Failed to super like."); }
     };
 
     const handleBlock = async () => {
@@ -93,6 +100,7 @@ const ViewProfile = () => {
 
                 <div className="profile-actions">
                     <button className="btn btn-primary" onClick={handleLike}>❤️ Like</button>
+                    <button className="btn" style={{ background: "linear-gradient(135deg,#1565c0,#42a5f5)", color: "white", boxShadow: "0 6px 20px rgba(21,101,192,0.3)" }} onClick={handleSuperLike}>⭐ Super Like</button>
                     <button className="btn btn-outline" onClick={() => navigate(`/chat/${userId}`)}>💬 Message</button>
                     <button className="btn btn-ghost" onClick={handleBlock}>🚫 Block</button>
                     <button className="btn btn-ghost" onClick={handleReport} style={{ color: "#e53935" }}>🚩 Report</button>

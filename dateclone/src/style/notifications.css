@@ -1,7 +1,7 @@
 /* ── Notifications ─────────────────────────────────────────────────────────── */
 .notifications-page {
     flex: 1;
-    padding: 24px;
+    padding: 28px 24px;
     max-width: 640px;
     margin: 0 auto;
     width: 100%;
@@ -15,12 +15,13 @@
 }
 
 .notifications-header h1 {
-    font-size: 1.8rem;
-    font-weight: 800;
-    background: linear-gradient(135deg, #ff1744, #ff4081);
+    font-size: 2rem;
+    font-weight: 900;
+    background: var(--grad-brand);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    letter-spacing: -0.03em;
 }
 
 .notif-clear-btn {
@@ -30,6 +31,13 @@
     font-size: 0.85rem;
     font-weight: 700;
     cursor: pointer;
+    padding: 8px 16px;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.notif-clear-btn:hover {
+    background: rgba(255, 23, 68, 0.08);
 }
 
 .notifications-list {
@@ -42,16 +50,17 @@
     display: flex;
     align-items: center;
     gap: 14px;
-    padding: 14px 16px;
+    padding: 16px 18px;
     background: white;
-    border-radius: 14px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    border-radius: 16px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
     border: 1px solid #f5f5f5;
-    transition: transform 0.2s;
+    transition: all 0.2s ease;
 }
 
 .notif-item:hover {
     transform: translateX(4px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
 }
 
 .notif-item.unread {
@@ -62,8 +71,8 @@
 .notif-icon {
     font-size: 1.5rem;
     flex-shrink: 0;
-    width: 44px;
-    height: 44px;
+    width: 48px;
+    height: 48px;
     background: rgba(255, 23, 68, 0.08);
     border-radius: 50%;
     display: flex;
@@ -102,8 +111,8 @@
     color: #ccc;
     font-size: 0.85rem;
     cursor: pointer;
-    padding: 4px 6px;
-    border-radius: 6px;
+    padding: 6px 8px;
+    border-radius: 8px;
     transition: all 0.2s;
     flex-shrink: 0;
 }
@@ -119,8 +128,8 @@
 }
 
 .notif-dot {
-    width: 9px;
-    height: 9px;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
     background: #ff1744;
     flex-shrink: 0;

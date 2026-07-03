@@ -8,35 +8,36 @@
   z-index: var(--z-sticky, 200);
   display: flex;
   align-items: center;
-  height: 68px;
+  height: 72px;
   padding: 0 clamp(20px, 5vw, 64px);
   gap: 32px;
   width: 100%;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
   border-bottom: 1px solid rgba(255, 23, 68, 0.06);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.04);
-  transition: box-shadow 0.3s ease;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03), 0 8px 32px rgba(255, 23, 68, 0.04);
+  transition: box-shadow 0.3s ease, background 0.3s ease;
 }
 
 /* Logo */
 .navbar .logo {
-  font-size: 1.45rem;
-  font-weight: 800;
+  font-size: 1.5rem;
+  font-weight: 900;
   color: var(--red-500, #ff1744);
   text-decoration: none;
   white-space: nowrap;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.03em;
   line-height: 1;
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  transition: opacity 0.2s;
 }
 
 .navbar .logo:hover {
-  opacity: 0.9;
+  opacity: 0.85;
 }
 
 /* Desktop nav links */
@@ -56,15 +57,15 @@
 .nav-links li a {
   display: inline-flex;
   align-items: center;
-  padding: 7px 14px;
-  border-radius: 8px;
+  padding: 8px 16px;
+  border-radius: 10px;
   font-size: 0.9rem;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--gray-600, #44445a);
   text-decoration: none;
   white-space: nowrap;
   line-height: 1;
-  transition: background 0.2s, color 0.2s;
+  transition: all 0.2s ease;
   position: relative;
 }
 
@@ -75,7 +76,7 @@
 
 .nav-links li a.active {
   color: var(--red-500, #ff1744);
-  font-weight: 600;
+  font-weight: 700;
   background: rgba(255, 23, 68, 0.08);
 }
 
@@ -90,47 +91,47 @@
 .login-btn {
   display: inline-flex;
   align-items: center;
-  padding: 8px 20px;
+  padding: 9px 22px;
   border: 1.5px solid var(--red-500, #ff1744);
-  border-radius: 8px;
+  border-radius: 50px;
   background: transparent;
   color: var(--red-500, #ff1744);
   font-size: 0.88rem;
-  font-weight: 600;
+  font-weight: 700;
   text-decoration: none;
   white-space: nowrap;
   line-height: 1;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .login-btn:hover {
   background: var(--red-500, #ff1744);
   color: white;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(255, 23, 68, 0.25);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 23, 68, 0.3);
 }
 
 .signup-btn {
   display: inline-flex;
   align-items: center;
-  padding: 9px 22px;
+  padding: 10px 24px;
   border: none;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #ff1744, #ff4081);
+  border-radius: 50px;
+  background: var(--grad-brand);
   color: white;
   font-size: 0.88rem;
   font-weight: 700;
   text-decoration: none;
   white-space: nowrap;
   line-height: 1;
-  box-shadow: 0 4px 14px rgba(255, 23, 68, 0.3);
-  transition: all 0.2s ease;
+  box-shadow: 0 6px 20px rgba(255, 23, 68, 0.35);
+  transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
   letter-spacing: 0.01em;
 }
 
 .signup-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(255, 23, 68, 0.4);
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 10px 28px rgba(255, 23, 68, 0.45);
 }
 
 /* Hamburger */
@@ -139,27 +140,33 @@
   flex-direction: column;
   justify-content: center;
   gap: 5px;
-  width: 36px;
-  height: 36px;
-  padding: 4px;
+  width: 38px;
+  height: 38px;
+  padding: 6px;
   background: none;
   border: none;
   cursor: pointer;
   flex-shrink: 0;
   margin-left: auto;
+  border-radius: 10px;
+  transition: background 0.2s;
+}
+
+.hamburger-menu:hover {
+  background: var(--red-50, #fff5f7);
 }
 
 .hamburger-menu span {
   display: block;
   width: 22px;
-  height: 2px;
+  height: 2.5px;
   background: var(--gray-700, #2d2d44);
   border-radius: 2px;
   transition: transform 0.3s ease, opacity 0.3s ease;
 }
 
 .hamburger-menu.active span:nth-child(1) {
-  transform: rotate(45deg) translate(5px, 4px);
+  transform: rotate(45deg) translate(5.5px, 5px);
 }
 
 .hamburger-menu.active span:nth-child(2) {
@@ -168,7 +175,7 @@
 }
 
 .hamburger-menu.active span:nth-child(3) {
-  transform: rotate(-45deg) translate(5px, -4px);
+  transform: rotate(-45deg) translate(5.5px, -5px);
 }
 
 /* Mobile dropdown */
@@ -177,27 +184,27 @@
   flex-direction: column;
   gap: 4px;
   position: fixed;
-  top: 68px;
+  top: 72px;
   left: 0;
   right: 0;
   background: rgba(255, 255, 255, 0.98);
-  backdrop-filter: blur(20px);
+  backdrop-filter: blur(24px);
   border-top: 1px solid rgba(255, 23, 68, 0.06);
-  padding: 12px 16px 20px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
+  padding: 16px 20px 24px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.1);
   z-index: 998;
-  animation: mobileNavIn 0.2s ease;
+  animation: mobileNavIn 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @keyframes mobileNavIn {
   from {
     opacity: 0;
-    transform: translateY(-8px);
+    transform: translateY(-12px) scale(0.98);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -207,10 +214,10 @@
 
 .mobile-nav a {
   display: block;
-  padding: 11px 16px;
-  border-radius: 10px;
+  padding: 12px 18px;
+  border-radius: 12px;
   font-size: 0.95rem;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--gray-700, #2d2d44);
   text-decoration: none;
   transition: background 0.15s, color 0.15s;
@@ -221,13 +228,25 @@
   color: var(--red-500, #ff1744);
 }
 
+.mobile-nav a.active {
+  background: rgba(255, 23, 68, 0.08);
+  color: var(--red-500, #ff1744);
+  font-weight: 700;
+}
+
+.mobile-nav-divider {
+  height: 1px;
+  background: rgba(255, 23, 68, 0.08);
+  margin: 8px 0;
+}
+
 .mobile-nav .login-btn,
 .mobile-nav .signup-btn {
-  margin-top: 6px;
+  margin-top: 4px;
   justify-content: center;
   text-align: center;
-  border-radius: 10px;
-  padding: 12px 20px;
+  border-radius: 50px;
+  padding: 13px 20px;
   font-size: 0.93rem;
   width: 100%;
 }

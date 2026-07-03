@@ -681,10 +681,10 @@ const S7 = ({ fd, navigate }: any) => {
             const res = await authAPI.verifyOtp(fd.email, code);
             // Persist the new token and member profile returned by the backend
             if (res.token) {
-                localStorage.setItem("authToken", res.token);
+                sessionStorage.setItem("authToken", res.token);
             }
             if (res.user) {
-                localStorage.setItem("user", JSON.stringify(res.user));
+                sessionStorage.setItem("user", JSON.stringify(res.user));
             }
             setStatus("success");
             setMsg(res.message || "Email verified! 🎉 Welcome to DateClone!");

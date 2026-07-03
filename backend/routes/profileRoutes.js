@@ -99,6 +99,21 @@ router.put("/:userId", authenticateToken, async (req, res) => {
             "isMember", "emailVerified", "isBanned", "reportCount", "flaggedForReview"];
         forbidden.forEach(k => delete updates[k]);
 
+        // Strip empty strings from enum fields — sending "" fails Mongoose validation.
+        // An empty string means "user didn't select anything", so we simply omit it.
+        const ENUM_FIELDS = ["gender", "lookingFor", "education", "smoking",
+            "drinking", "hasChildren", "wantsChildren", "religionImportance"];
+        ENUM_FIELDS.forEach(k => {
+            if (updates[k] === "" || updates[k] === null || updates[k] === undefined) {
+                delete updates[k];
+            }
+        });
+
+        // Also strip other empty strings so we don't overwrite existing data with ""
+        Object.keys(updates).forEach(k => {
+            if (updates[k] === "") delete updates[k];
+        });
+
         if (updates.dateOfBirth) {
             updates.age = new Date().getFullYear() - new Date(updates.dateOfBirth).getFullYear();
         }
@@ -111,14 +126,19 @@ router.put("/:userId", authenticateToken, async (req, res) => {
         mergedUser.profileCompletion = computeProfileCompletion(mergedUser);
         await mergedUser.save();
 
+        // Return the full user document minus sensitive fields so the frontend
+        // can refresh sessionStorage with all profile data intact.
+        const PUB = "-password -verificationToken -verificationTokenExpires -passwordResetToken -passwordResetExpires -refreshTokens";
+        const updated = await User.findById(userId).select(PUB).lean();
+
         res.json({
             success: true,
             message: "Profile updated",
-            user: mergedUser.toObject({ virtuals: true }),
+            user: updated,
         });
     } catch (error) {
         console.error("[Profile PUT]", error);
-        res.status(500).json({ success: false, message: "Failed to update profile" });
+        res.status(500).json({ success: false, message: "Failed to update profile", detail: error.message });
     }
 });
 

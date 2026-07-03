@@ -30,6 +30,36 @@ export interface AuthUser {
     memberSince?: string;
     profileCompletion?: number;
     emailVerified?: boolean;
+    // Full profile fields — populated after /auth/me or profile update
+    aboutMe?: string;
+    occupation?: string;
+    education?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    latitude?: number;
+    longitude?: number;
+    age?: number;
+    dateOfBirth?: string;
+    gender?: string;
+    lookingFor?: string;
+    religion?: string;
+    religionImportance?: string;
+    relationshipGoal?: string;
+    relationshipValue?: string;
+    hasChildren?: string;
+    wantsChildren?: string;
+    smoking?: string;
+    drinking?: string;
+    minAge?: number;
+    maxAge?: number;
+    preferredCountry?: string;
+    preferredDistance?: string;
+    interests?: string[];
+    languages?: string[];
+    photos?: string[];
+    // Allow any extra fields returned by the backend without TS errors
+    [key: string]: unknown;
 }
 
 interface AuthContextValue {

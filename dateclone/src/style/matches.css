@@ -1,7 +1,7 @@
 /* ── Matches Page ──────────────────────────────────────────────────────────── */
 .matches-page {
     flex: 1;
-    padding: 24px;
+    padding: 28px 24px 24px;
     max-width: 900px;
     margin: 0 auto;
     width: 100%;
@@ -12,12 +12,13 @@
 }
 
 .matches-header h1 {
-    font-size: 1.8rem;
-    font-weight: 800;
-    background: linear-gradient(135deg, #ff1744, #ff4081);
+    font-size: 2rem;
+    font-weight: 900;
+    background: var(--grad-brand);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    letter-spacing: -0.03em;
 }
 
 .matches-header p {
@@ -51,6 +52,10 @@
     transition: all 0.2s;
 }
 
+.matches-tab:hover {
+    color: #ff1744;
+}
+
 .matches-tab.active {
     color: #ff1744;
     border-bottom-color: #ff1744;
@@ -60,7 +65,7 @@
     background: rgba(255, 23, 68, 0.1);
     color: #ff1744;
     border-radius: 20px;
-    padding: 1px 8px;
+    padding: 2px 10px;
     font-size: 0.75rem;
     font-weight: 700;
 }
@@ -74,7 +79,7 @@
 /* Grid */
 .matches-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 20px;
 }
 
@@ -85,18 +90,18 @@
     box-shadow: 0 6px 24px rgba(0, 0, 0, 0.07);
     overflow: hidden;
     cursor: pointer;
-    transition: transform 0.25s, box-shadow 0.25s;
+    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s ease;
     border: 1px solid #f5f5f5;
 }
 
 .match-card:hover {
-    transform: translateY(-6px);
-    box-shadow: 0 16px 40px rgba(255, 23, 68, 0.12);
+    transform: translateY(-8px);
+    box-shadow: 0 20px 48px rgba(255, 23, 68, 0.12);
 }
 
 .match-card-photo {
     position: relative;
-    height: 200px;
+    height: 220px;
     background: linear-gradient(135deg, #fce4ec, #f8bbd0);
     overflow: hidden;
 }
@@ -105,6 +110,11 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
+    transition: transform 0.3s ease;
+}
+
+.match-card:hover .match-card-photo img {
+    transform: scale(1.05);
 }
 
 .match-card-placeholder {
@@ -113,10 +123,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 3rem;
+    font-size: 3.5rem;
     font-weight: 800;
     color: white;
-    background: linear-gradient(135deg, #ff1744, #ff4081);
+    background: var(--grad-brand);
 }
 
 .match-card-badge {
@@ -125,33 +135,33 @@
     right: 10px;
     background: white;
     border-radius: 50%;
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    font-size: 1rem;
+    font-size: 1.1rem;
 }
 
 .match-card-info {
-    padding: 12px 14px 8px;
+    padding: 14px 16px 8px;
 }
 
 .match-card-info h3 {
-    font-size: 1rem;
+    font-size: 1.05rem;
     font-weight: 700;
     color: #222;
     margin-bottom: 3px;
 }
 
 .match-card-location {
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     color: #999;
 }
 
 .match-card-occupation {
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     color: #666;
     margin-top: 2px;
 }
@@ -159,22 +169,22 @@
 .match-card-actions {
     display: flex;
     gap: 8px;
-    padding: 8px 14px 14px;
+    padding: 8px 16px 16px;
 }
 
 .match-action-btn {
     flex: 1;
-    padding: 8px;
-    border-radius: 8px;
+    padding: 9px;
+    border-radius: 10px;
     border: none;
-    font-size: 0.78rem;
+    font-size: 0.8rem;
     font-weight: 700;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s ease;
 }
 
 .match-action-btn.msg {
-    background: linear-gradient(135deg, #ff1744, #ff4081);
+    background: var(--grad-brand);
     color: white;
 }
 
@@ -194,12 +204,12 @@
 
 .match-action-btn.unmatch {
     flex: 0 0 auto;
-    width: 36px;
-    padding: 8px 0;
+    width: 38px;
+    padding: 9px 0;
     background: #fff0f0;
     color: #ff1744;
     font-size: 0.85rem;
-    border-radius: 8px;
+    border-radius: 10px;
 }
 
 .match-action-btn.unmatch:hover {
@@ -213,8 +223,8 @@
 
 /* Blurred likes */
 .blurred-img {
-    filter: blur(10px);
-    transform: scale(1.05);
+    filter: blur(12px);
+    transform: scale(1.08);
 }
 
 .match-blur-overlay {
@@ -224,15 +234,16 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.25);
+    background: rgba(0, 0, 0, 0.3);
     color: white;
     font-size: 0.85rem;
     font-weight: 600;
     gap: 4px;
+    backdrop-filter: blur(2px);
 }
 
 .match-blur-overlay span {
-    font-size: 2rem;
+    font-size: 2.2rem;
 }
 
 @media (max-width: 600px) {
@@ -242,7 +253,7 @@
     }
 
     .match-card-photo {
-        height: 160px;
+        height: 180px;
     }
 }
 
