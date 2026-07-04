@@ -25,6 +25,12 @@ const otpSchema = new mongoose.Schema(
             type: String,
             required: true,
         },
+        // "hmac" = fast SHA-256 HMAC (new default), "bcrypt" = legacy
+        hashType: {
+            type: String,
+            enum: ["bcrypt", "hmac"],
+            default: "bcrypt",   // legacy default so old records still work
+        },
         expiresAt: {
             type: Date,
             required: true,
