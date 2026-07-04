@@ -174,7 +174,11 @@ const checkResendRateLimit = async (email) => {
 router.post(
     "/register",
     [
-        body("email").isEmail().normalizeEmail().withMessage("Valid email required"),
+        // NOTE: Do NOT use .normalizeEmail() — it strips dots and plus aliases
+        // (e.g. john.doe@gmail.com → johndoe@gmail.com) which breaks non-Gmail
+        // addresses and causes emails to reach the wrong inbox.
+        // Manual normalization (trim + lowercase) is done inside the handler.
+        body("email").isEmail().withMessage("Valid email required"),
         body("password")
             .isLength({ min: 8 })
             .withMessage("Password must be at least 8 characters"),
@@ -226,6 +230,13 @@ router.post(
 
             const normalizedEmail = String(email).trim().toLowerCase();
             const normalizedUsername = String(username).trim().toLowerCase();
+
+            // ── Email tracing — verify the address is preserved exactly ─────
+            console.log(
+                `[Register] Email pipeline:\n` +
+                `  1. Received from frontend : "${email}"\n` +
+                `  2. After trim+lowercase   : "${normalizedEmail}"`
+            );
 
             // ── Step 1: Duplicate check + password hash in parallel ───────────
             // Both are independent — run them concurrently to save ~300ms
@@ -311,7 +322,12 @@ router.post(
             await Promise.all([newUser.save(), otpDoc.save()]);
             lap("user + OTP saved (parallel)");
 
-            console.log(`[Register] ✅ Saved: ${normalizedEmail} | OTP: ${plainOtp}`);
+            console.log(
+                `[Register] ✅ Saved to database:\n` +
+                `  Email stored in User:  "${newUser.email}"\n` +
+                `  Email stored in OTP:   "${otpDoc.email}"\n` +
+                `  OTP code:              ${plainOtp}`
+            );
 
             // ── Step 4: Respond immediately — don't wait for email ────────────
             const token = generateToken(newUser._id);
@@ -500,7 +516,8 @@ router.post("/resend-verification", async (req, res) => {
 // ── POST /login ───────────────────────────────────────────────────────────────
 router.post(
     "/login",
-    [body("email").isEmail().normalizeEmail(), body("password").notEmpty()],
+    // NOTE: Do NOT use .normalizeEmail() — it mutates the email (strips dots, etc.)
+    [body("email").isEmail(), body("password").notEmpty()],
     async (req, res) => {
         try {
             if (!ensureDb(res)) return;
@@ -638,7 +655,8 @@ router.post("/logout", authenticateToken, async (req, res) => {
 // ── POST /forgot-password ─────────────────────────────────────────────────────
 router.post(
     "/forgot-password",
-    [body("email").isEmail().normalizeEmail()],
+    // NOTE: Do NOT use .normalizeEmail() — it mutates the email
+    [body("email").isEmail()],
     async (req, res) => {
         try {
             if (!ensureDb(res)) return;
