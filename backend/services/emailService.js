@@ -92,26 +92,64 @@ export const sendVerificationEmail = async (email, otp) => {
     subject: "Your DateClone Verification Code",
     _otp: otp,
     html: `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-        <div style="background:linear-gradient(135deg,#ff1744,#ff4081);padding:24px 20px;border-radius:12px 12px 0 0;text-align:center;">
-          <h1 style="color:white;margin:0;font-size:26px;">DateClone 💕</h1>
-          <p style="color:rgba(255,255,255,.85);margin:6px 0 0;font-size:14px;">Verify your account</p>
-        </div>
-        <div style="padding:36px 30px;background:#fff;border-radius:0 0 12px 12px;border:1px solid #f0f0f0;border-top:none;">
-          <p style="color:#333;font-size:16px;margin-top:0;">Hi there! 👋</p>
-          <p style="color:#666;line-height:1.7;font-size:15px;">
-            Use the verification code below to confirm your email and activate your DateClone account.
-          </p>
-          <div style="text-align:center;margin:32px 0;">
-            <div style="display:inline-block;background:#fff5f7;border:2px dashed #ff4081;border-radius:14px;padding:20px 40px;">
-              <p style="color:#999;font-size:12px;text-transform:uppercase;letter-spacing:1.5px;margin:0 0 8px;">Your verification code</p>
-              <p style="font-size:42px;font-weight:800;letter-spacing:10px;color:#ff1744;margin:0;font-family:'Courier New',monospace;">${otp}</p>
-            </div>
-          </div>
-          <p style="color:#888;font-size:13px;text-align:center;margin-bottom:4px;">⏱ Expires in <strong>10 minutes</strong>.</p>
-          <p style="color:#aaa;font-size:12px;text-align:center;">If you didn't sign up for DateClone, ignore this email.</p>
-        </div>
-      </div>`,
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+      <body style="margin:0;padding:0;background-color:#f5f5f5;font-family:'Segoe UI',Arial,sans-serif;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f5f5;padding:20px 0;">
+          <tr><td align="center">
+            <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#e91e63,#ff4081);padding:32px 24px;border-radius:16px 16px 0 0;text-align:center;">
+                  <h1 style="color:#ffffff;margin:0;font-size:28px;font-weight:700;">DateClone 💕</h1>
+                  <p style="color:rgba(255,255,255,0.9);margin:8px 0 0;font-size:15px;">Welcome! Let's get you verified.</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="background-color:#ffffff;padding:40px 32px;border-left:1px solid #e0e0e0;border-right:1px solid #e0e0e0;">
+                  <p style="color:#333333;font-size:16px;line-height:1.6;margin:0 0 20px;">Hi there! 👋</p>
+                  <p style="color:#555555;font-size:15px;line-height:1.7;margin:0 0 8px;">
+                    Thanks for joining <strong style="color:#e91e63;">DateClone</strong>. Use the verification code below to confirm your email address and activate your account.
+                  </p>
+                  <p style="color:#555555;font-size:15px;line-height:1.7;margin:0 0 32px;">
+                    This helps us keep the community authentic and secure.
+                  </p>
+
+                  <!-- OTP Code -->
+                  <div style="text-align:center;margin:0 0 32px;">
+                    <div style="display:inline-block;background:#fce4ec;border:2px dashed #e91e63;border-radius:16px;padding:24px 48px;">
+                      <p style="color:#888888;font-size:11px;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;">Verification Code</p>
+                      <p style="font-size:44px;font-weight:800;letter-spacing:12px;color:#e91e63;margin:0;font-family:'Courier New',Courier,monospace;">${otp}</p>
+                    </div>
+                  </div>
+
+                  <div style="background:#fff8e1;border-radius:10px;padding:16px 20px;margin:0 0 24px;">
+                    <p style="color:#f57f17;font-size:13px;margin:0;">
+                      ⏱ This code expires in <strong>10 minutes</strong>. For your security, do not share this code with anyone.
+                    </p>
+                  </div>
+
+                  <p style="color:#999999;font-size:12px;line-height:1.6;text-align:center;margin:0;">
+                    If you didn't sign up for DateClone, you can safely ignore this email.
+                  </p>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#fafafa;padding:24px 32px;border-radius:0 0 16px 16px;border:1px solid #e0e0e0;border-top:none;text-align:center;">
+                  <p style="color:#bbbbbb;font-size:12px;margin:0 0 4px;">DateClone — Find your perfect match</p>
+                  <p style="color:#cccccc;font-size:11px;margin:0;">
+                    This is an automated message, please do not reply directly.
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>`,
   });
 };
 

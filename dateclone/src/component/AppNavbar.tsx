@@ -50,6 +50,11 @@ const AppNavbar = ({ unreadMessages = 0 }: { unreadMessages?: number }) => {
                 </Link>
 
                 {/* Desktop nav links */}
+                {user?.isAdmin && (
+                    <Link to="/admin" className="admin-nav-link">
+                        🛡️ Admin
+                    </Link>
+                )}
                 <ul className="app-nav-links">
                     <li>
                         <Link to="/dashboard" className={isActive("/dashboard") ? "active" : ""}>

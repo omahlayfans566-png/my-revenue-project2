@@ -307,6 +307,119 @@ export const clearAuthData = () => {
     sessionStorage.removeItem("user");
 };
 
+// ============================================
+// ADMIN ENDPOINTS
+// ============================================
+
+export const adminAPI = {
+    // Dashboard
+    getDashboard: async () => apiCall("/admin/dashboard"),
+
+    // Users
+    getUsers: async (params: Record<string, string | number> = {}) => {
+        const queryParams = new URLSearchParams();
+        Object.entries(params).forEach(([key, value]) => {
+            if (value) queryParams.set(key, String(value));
+        });
+        return apiCall(`/admin/users${queryParams.toString() ? `?${queryParams.toString()}` : ""}`);
+    },
+
+    getUser: async (userId: string) => apiCall(`/admin/users/${userId}`),
+
+    changeUserRole: async (userId: string, role: string) =>
+        apiCall(`/admin/users/${userId}/role`, {
+            method: "PATCH",
+            body: JSON.stringify({ role }),
+        }),
+
+    suspendUser: async (userId: string, reason: string, durationHours: number = 24) =>
+        apiCall(`/admin/users/${userId}/suspend`, {
+            method: "POST",
+            body: JSON.stringify({ reason, durationHours }),
+        }),
+
+    unsuspendUser: async (userId: string) =>
+        apiCall(`/admin/users/${userId}/unsuspend`, { method: "POST" }),
+
+    banUser: async (userId: string, reason: string) =>
+        apiCall(`/admin/users/${userId}/ban`, {
+            method: "POST",
+            body: JSON.stringify({ reason }),
+        }),
+
+    unbanUser: async (userId: string) =>
+        apiCall(`/admin/users/${userId}/unban`, { method: "POST" }),
+
+    deleteUser: async (userId: string) =>
+        apiCall(`/admin/users/${userId}`, { method: "DELETE" }),
+
+    // Reports
+    getReports: async (params: Record<string, string | number> = {}) => {
+        const queryParams = new URLSearchParams();
+        Object.entries(params).forEach(([key, value]) => {
+            if (value) queryParams.set(key, String(value));
+        });
+        return apiCall(`/admin/reports${queryParams.toString() ? `?${queryParams.toString()}` : ""}`);
+    },
+
+    reviewReport: async (reportId: string, data: Record<string, any>) =>
+        apiCall(`/admin/reports/${reportId}`, {
+            method: "PATCH",
+            body: JSON.stringify(data),
+        }),
+
+    // Announcements
+    getAnnouncements: async (params: Record<string, string | number> = {}) => {
+        const queryParams = new URLSearchParams();
+        Object.entries(params).forEach(([key, value]) => {
+            if (value) queryParams.set(key, String(value));
+        });
+        return apiCall(`/admin/announcements${queryParams.toString() ? `?${queryParams.toString()}` : ""}`);
+    },
+
+    createAnnouncement: async (data: Record<string, any>) =>
+        apiCall("/admin/announcements", {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+
+    // Subscriptions
+    getSubscriptions: async (params: Record<string, string | number> = {}) => {
+        const queryParams = new URLSearchParams();
+        Object.entries(params).forEach(([key, value]) => {
+            if (value) queryParams.set(key, String(value));
+        });
+        return apiCall(`/admin/subscriptions${queryParams.toString() ? `?${queryParams.toString()}` : ""}`);
+    },
+
+    // Logs
+    getLogs: async (params: Record<string, string | number> = {}) => {
+        const queryParams = new URLSearchParams();
+        Object.entries(params).forEach(([key, value]) => {
+            if (value) queryParams.set(key, String(value));
+        });
+        return apiCall(`/admin/logs${queryParams.toString() ? `?${queryParams.toString()}` : ""}`);
+    },
+
+    // Flagged Content
+    getFlaggedContent: async (params: Record<string, string | number> = {}) => {
+        const queryParams = new URLSearchParams();
+        Object.entries(params).forEach(([key, value]) => {
+            if (value) queryParams.set(key, String(value));
+        });
+        return apiCall(`/admin/flagged-content${queryParams.toString() ? `?${queryParams.toString()}` : ""}`);
+    },
+
+    moderateContent: async (userId: string, data: Record<string, any>) =>
+        apiCall(`/admin/flagged-content/${userId}`, {
+            method: "PATCH",
+            body: JSON.stringify(data),
+        }),
+
+    // Analytics
+    getAnalytics: async () => apiCall("/admin/analytics"),
+};
+
 export default {
     authAPI,
     profileAPI,
@@ -314,4 +427,5 @@ export default {
     messageAPI,
     paymentAPI,
     notificationAPI,
+    adminAPI,
 };

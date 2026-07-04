@@ -4,6 +4,7 @@ import crypto from "crypto";
 import mongoose from "mongoose";
 import { body, validationResult } from "express-validator";
 import { User } from "../models/User.js";
+import { Otp } from "../models/Otp.js";
 import {
     authenticateToken,
     generateToken,
@@ -49,13 +50,35 @@ const publicUser = (u) => ({
     premiumTier: u.premiumTier ?? "basic",
 });
 
-const activateWithOtp = async (email, otp) => {
-    const user = await User.findOne({
-        email,
-        verificationToken: otp,
-        verificationTokenExpires: { $gt: Date.now() },
-    });
+/**
+ * Generate a secure random 6-digit OTP using crypto.randomInt.
+ */
+const generateOtp = () => {
+    return Math.floor(100000 + crypto.randomInt(0, 900000)).toString();
+};
 
+/**
+ * Activate a user after successful OTP verification.
+ * Uses the dedicated Otp model with hashed OTPs for security.
+ */
+const activateWithOtp = async (email, plainOtp) => {
+    const otpRecord = await Otp.findOne({
+        email,
+        used: false,
+        expiresAt: { $gt: new Date() },
+    }).sort({ createdAt: -1 });
+
+    if (!otpRecord) return null;
+
+    const isValid = await otpRecord.compareOtp(plainOtp);
+    if (!isValid) return null;
+
+    // Mark OTP as used
+    otpRecord.used = true;
+    await otpRecord.save();
+
+    // Find and activate the user
+    const user = await User.findById(otpRecord.userId);
     if (!user) return null;
 
     await onboardMember(user);
@@ -65,7 +88,7 @@ const activateWithOtp = async (email, otp) => {
     user.refreshTokens.push(refreshToken);
     await user.save();
 
-    sendWelcomeEmail(user.email, user.firstName).catch(() => { });
+    sendWelcomeEmail(user.email, user.firstName).catch(() => {});
 
     return {
         user,
@@ -74,6 +97,39 @@ const activateWithOtp = async (email, otp) => {
     };
 };
 
+// ── Rate limiting for resend endpoint ─────────────────────────────────────────
+// Maximum 3 resends per 15-minute window
+const checkResendRateLimit = async (email) => {
+    const now = new Date();
+    const fifteenMinAgo = new Date(now.getTime() - 15 * 60 * 1000);
+
+    // Find the most recent OTP record for this email
+    const recent = await Otp.findOne({
+        email,
+        createdAt: { $gte: fifteenMinAgo },
+    }).sort({ createdAt: -1 });
+
+    if (!recent) return { allowed: true };
+
+    // If the last resend was more than 15 minutes ago, reset the counter
+    if (recent.resendFirstAt && recent.resendFirstAt < fifteenMinAgo) {
+        recent.resendCount = 0;
+        recent.resendFirstAt = null;
+        await recent.save();
+        return { allowed: true };
+    }
+
+    if (recent.resendCount >= 3) {
+        return {
+            allowed: false,
+            message: "Too many resend attempts. Please wait 15 minutes before trying again.",
+        };
+    }
+
+    return { allowed: true, record: recent };
+};
+
+// ── POST /register ────────────────────────────────────────────────────────────
 router.post(
     "/register",
     [
@@ -96,39 +152,14 @@ router.post(
             }
 
             const {
-                firstName,
-                lastName,
-                username,
-                email,
-                phone,
-                password,
-                confirmPassword,
-                dateOfBirth,
-                gender,
-                lookingFor,
-                country,
-                state,
-                city,
-                latitude,
-                longitude,
-                profilePicture,
-                aboutMe,
-                occupation,
-                education,
-                languages,
-                interests,
-                smoking,
-                drinking,
-                minAge,
-                maxAge,
-                preferredCountry,
-                preferredDistance,
-                relationshipGoal,
-                hasChildren,
-                wantsChildren,
-                religion,
-                religionImportance,
-                relationshipValue,
+                firstName, lastName, username, email, phone,
+                password, confirmPassword, dateOfBirth, gender, lookingFor,
+                country, state, city, latitude, longitude,
+                profilePicture, aboutMe, occupation, education,
+                languages, interests, smoking, drinking,
+                minAge, maxAge, preferredCountry, preferredDistance,
+                relationshipGoal, hasChildren, wantsChildren,
+                religion, religionImportance, relationshipValue,
             } = req.body;
 
             if (!firstName || !lastName || !username || !email || !password) {
@@ -161,14 +192,16 @@ router.post(
                 });
             }
 
-            const otp = Math.floor(100000 + Math.random() * 900000).toString();
+            // Generate secure OTP
+            const plainOtp = generateOtp();
             const expires = new Date(Date.now() + 10 * 60 * 1000);
             const dob = dateOfBirth ? new Date(dateOfBirth) : null;
             const age = dob
                 ? new Date().getFullYear() - dob.getFullYear()
                 : undefined;
 
-            const hashed = await bcrypt.hash(password, 12);
+            // Use bcrypt with cost 10 for password hashing (balances speed + security)
+            const hashed = await bcrypt.hash(password, 10);
 
             const newUser = new User({
                 firstName,
@@ -204,8 +237,6 @@ router.post(
                 religion,
                 religionImportance,
                 relationshipValue,
-                verificationToken: otp,
-                verificationTokenExpires: expires,
                 isMember: false,
                 isActive: true,
                 onboardingComplete: false,
@@ -214,10 +245,23 @@ router.post(
             await newUser.save();
             console.log(`[Register] User saved to MongoDB: ${normalizedEmail}`);
 
+            // Save hashed OTP to the dedicated Otp collection
+            const hashedOtp = await Otp.hashOtp(plainOtp);
+            const otpRecord = new Otp({
+                userId: newUser._id,
+                email: normalizedEmail,
+                otp: hashedOtp,
+                expiresAt: expires,
+                used: false,
+            });
+            await otpRecord.save();
+
+            // Send verification email
             try {
-                await sendVerificationEmail(normalizedEmail, otp);
+                await sendVerificationEmail(normalizedEmail, plainOtp);
             } catch (err) {
                 await User.findByIdAndDelete(newUser._id);
+                await Otp.deleteMany({ email: normalizedEmail });
                 console.error("[Register] Verification email failed:", err.message);
                 return res.status(500).json({
                     success: false,
@@ -227,8 +271,7 @@ router.post(
 
             return res.status(201).json({
                 success: true,
-                message:
-                    "Account created. Enter the 6-digit verification code sent to your email.",
+                message: "Account created. Enter the 6-digit verification code sent to your email.",
                 token: generateToken(newUser._id),
                 user: publicUser(newUser),
             });
@@ -242,6 +285,7 @@ router.post(
     }
 );
 
+// ── POST /verify-otp ──────────────────────────────────────────────────────────
 router.post("/verify-otp", async (req, res) => {
     try {
         if (!ensureDb(res)) return;
@@ -278,6 +322,7 @@ router.post("/verify-otp", async (req, res) => {
     }
 });
 
+// ── POST /verify-email (alias for verify-otp for backwards compatibility) ─────
 router.post("/verify-email", async (req, res) => {
     try {
         if (!ensureDb(res)) return;
@@ -315,6 +360,8 @@ router.post("/verify-email", async (req, res) => {
     }
 });
 
+// ── POST /resend-verification ─────────────────────────────────────────────────
+// Rate limited: max 3 resends every 15 minutes
 router.post("/resend-verification", async (req, res) => {
     try {
         if (!ensureDb(res)) return;
@@ -339,22 +386,57 @@ router.post("/resend-verification", async (req, res) => {
                 .json({ success: false, message: "Email is already verified." });
         }
 
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        user.verificationToken = otp;
-        user.verificationTokenExpires = new Date(Date.now() + 10 * 60 * 1000);
-        await user.save();
+        // Check rate limit: max 3 resends per 15 minutes
+        const rateCheck = await checkResendRateLimit(email);
+        if (!rateCheck.allowed) {
+            return res.status(429).json({ success: false, message: rateCheck.message });
+        }
 
-        await sendVerificationEmail(email, otp);
+        // Generate a new OTP
+        const plainOtp = generateOtp();
+        const expires = new Date(Date.now() + 10 * 60 * 1000);
+        const hashedOtp = await Otp.hashOtp(plainOtp);
 
-        return res.json({ success: true, message: "Verification code sent." });
+        // Invalidate old unused OTPs for this email
+        await Otp.updateMany(
+            { email, used: false },
+            { $set: { used: true } }
+        );
+
+        // Create new OTP record
+        const now = new Date();
+        const otpRecord = new Otp({
+            userId: user._id,
+            email,
+            otp: hashedOtp,
+            expiresAt: expires,
+            used: false,
+            resendCount: rateCheck.record ? rateCheck.record.resendCount + 1 : 1,
+            resendFirstAt: rateCheck.record ? rateCheck.record.resendFirstAt : now,
+        });
+        await otpRecord.save();
+
+        // Send the verification email
+        try {
+            await sendVerificationEmail(email, plainOtp);
+        } catch (err) {
+            console.error("[ResendVerification] Email error:", err.message);
+            return res.status(500).json({
+                success: false,
+                message: "Failed to send verification email. Please try again.",
+            });
+        }
+
+        return res.json({ success: true, message: "A new verification code has been sent to your email." });
     } catch (err) {
         console.error("[ResendVerification]", err);
         return res
             .status(500)
-            .json({ success: false, message: "Resend failed." });
+            .json({ success: false, message: "Resend failed. Please try again." });
     }
 });
 
+// ── POST /login ───────────────────────────────────────────────────────────────
 router.post(
     "/login",
     [body("email").isEmail().normalizeEmail(), body("password").notEmpty()],
@@ -421,6 +503,7 @@ router.post(
     }
 );
 
+// ── POST /refresh ─────────────────────────────────────────────────────────────
 router.post("/refresh", async (req, res) => {
     try {
         if (!ensureDb(res)) return;
@@ -467,6 +550,7 @@ router.post("/refresh", async (req, res) => {
     }
 });
 
+// ── POST /logout ──────────────────────────────────────────────────────────────
 router.post("/logout", authenticateToken, async (req, res) => {
     try {
         if (!ensureDb(res)) return;
@@ -490,6 +574,7 @@ router.post("/logout", authenticateToken, async (req, res) => {
     }
 });
 
+// ── POST /forgot-password ─────────────────────────────────────────────────────
 router.post(
     "/forgot-password",
     [body("email").isEmail().normalizeEmail()],
@@ -523,6 +608,7 @@ router.post(
     }
 );
 
+// ── POST /reset-password ──────────────────────────────────────────────────────
 router.post(
     "/reset-password",
     [body("token").notEmpty(), body("password").isLength({ min: 8 })],
@@ -544,7 +630,7 @@ router.post(
                 });
             }
 
-            user.password = await bcrypt.hash(password, 12);
+            user.password = await bcrypt.hash(password, 10);
             user.passwordResetToken = undefined;
             user.passwordResetExpires = undefined;
             user.refreshTokens = [];
@@ -563,6 +649,7 @@ router.post(
     }
 );
 
+// ── GET /me ───────────────────────────────────────────────────────────────────
 router.get("/me", authenticateToken, async (req, res) => {
     try {
         if (!ensureDb(res)) return;
@@ -574,8 +661,6 @@ router.get("/me", authenticateToken, async (req, res) => {
                 .json({ success: false, message: "User not found." });
         }
 
-        // Return the full user document (minus sensitive fields) so the frontend
-        // can populate EditProfile and Profile pages with all stored data.
         return res.json({ success: true, user });
     } catch (err) {
         console.error("[Me]", err);
@@ -585,6 +670,7 @@ router.get("/me", authenticateToken, async (req, res) => {
     }
 });
 
+// ── GET /admin-check ──────────────────────────────────────────────────────────
 router.get("/admin-check", authenticateToken, async (req, res) => {
     try {
         if (!ensureDb(res)) return;

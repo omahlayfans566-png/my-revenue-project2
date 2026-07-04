@@ -22,6 +22,7 @@ import Profile from "./pages/Profile";
 import EditProfile from "./pages/EditProfile";
 import Settings from "./pages/Settings";
 import ViewProfile from "./pages/ViewProfile";
+import AdminDashboard from "./pages/AdminDashboard";
 
 // Auth context & guard
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -67,6 +68,7 @@ function AppRoutes() {
       <Route path="/profile/edit" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
       <Route path="/profile/:userId" element={<ProtectedRoute><ViewProfile /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+      <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

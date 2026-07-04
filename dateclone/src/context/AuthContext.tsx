@@ -27,6 +27,8 @@ export interface AuthUser {
     premiumTier?: string;
     isMember?: boolean;
     isActive?: boolean;
+    role?: string;
+    isAdmin?: boolean;
     memberSince?: string;
     profileCompletion?: number;
     emailVerified?: boolean;

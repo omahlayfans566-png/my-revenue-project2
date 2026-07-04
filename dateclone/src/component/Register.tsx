@@ -679,13 +679,9 @@ const S7 = ({ fd, navigate }: any) => {
         setStatus("verifying"); setMsg("");
         try {
             const res = await authAPI.verifyOtp(fd.email, code);
-            // Persist the new token and member profile returned by the backend
-            if (res.token) {
-                sessionStorage.setItem("authToken", res.token);
-            }
-            if (res.user) {
-                sessionStorage.setItem("user", JSON.stringify(res.user));
-            }
+            // Persist the new token and member profile using the proper API helpers
+            setAuthToken(res.token);
+            saveUserToLocal(res.user);
             setStatus("success");
             setMsg(res.message || "Email verified! 🎉 Welcome to DateClone!");
             setTimeout(() => navigate("/discover", { replace: true }), 1800);

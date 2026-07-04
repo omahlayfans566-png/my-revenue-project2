@@ -76,7 +76,13 @@ const userSchema = new mongoose.Schema(
         // ── Refresh tokens (stored as array to support multi-device) ──────────
         refreshTokens: [{ type: String }],
 
-        // ── Admin role ────────────────────────────────────────────────────────
+        // ── Role (RBAC) ─────────────────────────────────────────────────────
+        role: {
+            type: String,
+            enum: ["user", "moderator", "admin", "super_admin"],
+            default: "user",
+        },
+        // Keep isAdmin for backward compatibility (derived from role)
         isAdmin: { type: Boolean, default: false },
 
         // ── Member status (set automatically on verification) ─────────────────
@@ -87,6 +93,15 @@ const userSchema = new mongoose.Schema(
         // ── Account status ────────────────────────────────────────────────────
         isActive: { type: Boolean, default: true },
         isBanned: { type: Boolean, default: false },
+        bannedAt: Date,
+        bannedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        banReason: String,
+        suspendedAt: Date,
+        suspendedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        suspensionReason: String,
+        suspensionEnds: Date,
+        deletedAt: Date,
+        deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
         lastLogin: Date,
 
         // ── Profile completion score (0-100) ──────────────────────────────────
@@ -119,10 +134,17 @@ userSchema.index({ gender: 1, age: 1, country: 1 });
 userSchema.index({ isMember: 1, isActive: 1, isBanned: 1, emailVerified: 1 });
 userSchema.index({ latitude: 1, longitude: 1 });
 userSchema.index({ interests: 1 });
+userSchema.index({ role: 1 });
 
 // ── Virtual: full name ─────────────────────────────────────────────────────────
 userSchema.virtual("fullName").get(function () {
     return `${this.firstName} ${this.lastName}`;
+});
+
+// ── Pre-save hook: sync `isAdmin` with `role` ─────────────────────────────────
+userSchema.pre("save", function (next) {
+    this.isAdmin = ["admin", "super_admin"].includes(this.role);
+    next();
 });
 
 export const User = mongoose.model("User", userSchema);
