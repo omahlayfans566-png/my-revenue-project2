@@ -88,7 +88,7 @@ const activateWithOtp = async (email, plainOtp) => {
     user.refreshTokens.push(refreshToken);
     await user.save();
 
-    sendWelcomeEmail(user.email, user.firstName).catch(() => {});
+    sendWelcomeEmail(user.email, user.firstName).catch(() => { });
 
     return {
         user,
@@ -260,12 +260,20 @@ router.post(
             try {
                 await sendVerificationEmail(normalizedEmail, plainOtp);
             } catch (err) {
+                // Roll back: remove the user and any OTP records created above
                 await User.findByIdAndDelete(newUser._id);
                 await Otp.deleteMany({ email: normalizedEmail });
-                console.error("[Register] Verification email failed:", err.message);
+                console.error("[Register] Verification email failed:", {
+                    message: err.message,
+                    code: err.code,
+                    command: err.command,
+                    response: err.response,
+                });
                 return res.status(500).json({
                     success: false,
                     message: "Could not send verification email. Please try again.",
+                    // Include detail in dev so the UI can show a useful message
+                    ...(process.env.NODE_ENV !== "production" && { detail: err.message }),
                 });
             }
 

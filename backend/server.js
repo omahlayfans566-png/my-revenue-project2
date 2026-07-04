@@ -18,6 +18,7 @@ import messageRoutes from "./routes/messageRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { verifyEmailService } from "./services/emailService.js";
 import { requestLogger } from "./middleware/requestLogger.js";
 
 const app = express();
@@ -108,8 +109,8 @@ io.on("connection", (socket) => {
 // headers that cause production CORS preflight (OPTIONS) to return 500.
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
-app.use(helmet({ 
-    crossOriginResourcePolicy: { policy: "cross-origin" }, 
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
     crossOriginOpenerPolicy: false,
@@ -163,6 +164,9 @@ if (!process.env.JWT_SECRET) {
 
 const start = async () => {
     await connectDB(); // never throws — falls back gracefully
+
+    // Verify email service at startup — non-blocking, logs result
+    verifyEmailService().catch(() => { }); // errors already logged inside
 
     // Handle EADDRINUSE and other listen errors before they become uncaughtExceptions
     server.on("error", (err) => {
