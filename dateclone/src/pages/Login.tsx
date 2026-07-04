@@ -100,7 +100,7 @@ const Login = () => {
     setResendMsg("");
     try {
       await authAPI.resendVerification(email.trim());
-      setResendMsg("✓ New code sent! Check your backend terminal for the OTP.");
+      setResendMsg("✓ New verification code sent! Check your email inbox.");
     } catch (err: any) {
       setResendMsg(err.message || "Failed to resend. Try again.");
     } finally {
@@ -142,8 +142,8 @@ const Login = () => {
         {needsVerify && (
           <div className="auth-verify-nudge">
             <p>
-              <strong>Email not verified.</strong> Check your backend terminal for
-              the OTP code printed there, or resend below.
+              <strong>Email not verified.</strong> Check your email inbox for the
+              verification code, or resend below.
             </p>
             {resendMsg ? (
               <p className={resendMsg.startsWith("✓") ? "auth-nudge-success" : "auth-nudge-error"}>

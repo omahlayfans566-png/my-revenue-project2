@@ -9,7 +9,7 @@ import "../style/discover.css";
 interface Profile {
     _id: string; firstName: string; lastName: string;
     profilePicture?: string; photos?: string[];
-    age?: number; city?: string; country?: string;
+    age?: number; city?: string; country?: string; distance?: string | number;
     occupation?: string; aboutMe?: string;
     interests?: string[]; relationshipGoal?: string;
     education?: string; religion?: string;
@@ -29,11 +29,11 @@ const TABS: { key: FeedTab; label: string; icon: string }[] = [
 
 // ─── Swipe card component ─────────────────────────────────────────────────────
 const SwipeCard = ({
-    profile, swipeDir, onLike, onSuperLike, onPass, actionLoading, navigate,
+    profile, swipeDir, onLike, onSuperLike, onPass, actionLoading, navigate, isOnline,
 }: {
     profile: Profile; swipeDir: string | null;
     onLike: () => void; onSuperLike: () => void; onPass: () => void;
-    actionLoading: string | null; navigate: (p: string) => void;
+    actionLoading: string | null; navigate: (p: string) => void; isOnline: boolean;
 }) => {
     const [photoIdx, setPhotoIdx] = useState(0);
     const photos = [profile.profilePicture, ...(profile.photos || [])].filter(Boolean) as string[];
@@ -50,7 +50,7 @@ const SwipeCard = ({
                     <div className="swipe-photo-placeholder">{initials}</div>
                 )}
 
-                {/* Photo dots */}
+                {/* Photo dots — bar style */}
                 {photos.length > 1 && (
                     <div className="photo-dots">
                         {photos.map((_, i) => (
@@ -70,11 +70,12 @@ const SwipeCard = ({
 
                 {/* Badges */}
                 <div className="swipe-badges">
-                    {profile.compatibilityScore && (
-                        <span className="badge-compat">{profile.compatibilityScore}% match</span>
-                    )}
                     {profile.isVerified && <span className="badge-verified">✓ Verified</span>}
-                    {profile.isPremium && <span className="badge-premium">✨</span>}
+                    {isOnline && <span className="badge-online">Online</span>}
+                    {profile.compatibilityScore && (
+                        <span className="badge-compat">{profile.compatibilityScore}%</span>
+                    )}
+                    {profile.isPremium && <span className="badge-premium">✨ Premium</span>}
                 </div>
 
                 {/* LIKE / NOPE overlays */}
@@ -84,7 +85,14 @@ const SwipeCard = ({
 
                 {/* Info overlay */}
                 <div className="swipe-overlay">
-                    <h2>{profile.firstName}, {profile.age ?? "?"}</h2>
+                    <div className="swipe-overlay-top">
+                        <div className="swipe-name-age">
+                            <h2>{profile.firstName}, {profile.age ?? "?"}</h2>
+                        </div>
+                        {profile.distance && (
+                            <span className="swipe-distance">📍 {profile.distance}</span>
+                        )}
+                    </div>
                     {(profile.city || profile.country) && (
                         <p className="swipe-location">📍 {[profile.city, profile.country].filter(Boolean).join(", ")}</p>
                     )}
@@ -95,11 +103,11 @@ const SwipeCard = ({
             {/* Bio */}
             {profile.aboutMe && (
                 <div className="swipe-bio">
-                    <p>{profile.aboutMe.slice(0, 180)}{profile.aboutMe.length > 180 ? "…" : ""}</p>
+                    <p>{profile.aboutMe.slice(0, 160)}{profile.aboutMe.length > 160 ? "…" : ""}</p>
                 </div>
             )}
 
-            {/* Interests */}
+            {/* Interests — modern chips */}
             {profile.interests && profile.interests.length > 0 && (
                 <div className="swipe-interests">
                     {profile.interests.slice(0, 6).map(i => (
@@ -292,6 +300,7 @@ const Discover = () => {
                         <SwipeCard
                             profile={current}
                             swipeDir={swipeDir}
+                            isOnline={onlineUsers.has(current._id)}
                             onLike={() => doAction("right", () => matchAPI.likeUser(current._id))}
                             onSuperLike={() => doAction("up", () => matchAPI.superLikeUser(current._id))}
                             onPass={() => doAction("left", () => matchAPI.passUser(current._id))}

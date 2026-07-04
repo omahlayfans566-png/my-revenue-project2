@@ -11,8 +11,6 @@ dotenv.config();
 // ── Lazy transporter ──────────────────────────────────────────────────────────
 let _transporter = null;
 
-const isDev = () => (process.env.NODE_ENV || "development") !== "production";
-
 const looksLikePlaceholder = (value) => {
   if (!value) return true;
   const v = String(value).trim().toLowerCase();
@@ -22,19 +20,6 @@ const looksLikePlaceholder = (value) => {
     v === "changeme" ||
     v === "test"
   );
-};
-
-const logDevEmailFallback = (options, reason) => {
-  console.warn(`\n[Email DEV fallback] ${reason}`);
-  console.log("╔══════════════════════════════════════╗");
-  console.log("║   EMAIL NOT SENT (DEV FALLBACK)      ║");
-  console.log("╠══════════════════════════════════════╣");
-  console.log(`║  To:      ${options.to}`);
-  console.log(`║  Subject: ${options.subject}`);
-  if (options._otp) {
-    console.log(`║  OTP CODE: ${options._otp}`);
-  }
-  console.log("╚══════════════════════════════════════╝\n");
 };
 
 const getTransporter = () => {
@@ -75,10 +60,6 @@ const sendMail = async (options) => {
     const t = getTransporter();
     return await t.sendMail(options);
   } catch (error) {
-    if (isDev()) {
-      logDevEmailFallback(options, error.message);
-      return { messageId: "dev-fallback" };
-    }
     throw error;
   }
 };
@@ -90,7 +71,6 @@ export const sendVerificationEmail = async (email, otp) => {
     from: process.env.SMTP_FROM || `"DateClone" <${process.env.SMTP_USER || process.env.GMAIL_USER || "noreply@dateclone.com"}>`,
     to: email,
     subject: "Your DateClone Verification Code",
-    _otp: otp,
     html: `
       <!DOCTYPE html>
       <html>
