@@ -418,6 +418,31 @@ export const adminAPI = {
 
     // Analytics
     getAnalytics: async () => apiCall("/admin/analytics"),
+
+    // User actions
+    grantPremium: async (userId: string, tier: string = "gold", durationDays: number = 30) =>
+        apiCall(`/admin/users/${userId}/grant-premium`, {
+            method: "POST",
+            body: JSON.stringify({ tier, durationDays }),
+        }),
+
+    revokePremium: async (userId: string) =>
+        apiCall(`/admin/users/${userId}/revoke-premium`, { method: "POST" }),
+
+    forceLogout: async (userId: string) =>
+        apiCall(`/admin/users/${userId}/force-logout`, { method: "POST" }),
+
+    manualVerify: async (userId: string) =>
+        apiCall(`/admin/users/${userId}/verify`, { method: "POST" }),
+
+    sendPasswordReset: async (userId: string) =>
+        apiCall(`/admin/users/${userId}/reset-password`, { method: "POST" }),
+
+    editUser: async (userId: string, data: Record<string, any>) =>
+        apiCall(`/admin/users/${userId}`, {
+            method: "PATCH",
+            body: JSON.stringify(data),
+        }),
 };
 
 export default {

@@ -639,6 +639,158 @@ router.get("/subscriptions", authorize("admin", "super_admin"), async (req, res)
     }
 });
 
+// POST /admin/users/:id/grant-premium — manually grant premium to a user
+router.post("/users/:id/grant-premium", authorize("admin", "super_admin"), async (req, res) => {
+    try {
+        const { tier = "gold", durationDays = 30 } = req.body;
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ success: false, message: "Invalid user ID." });
+        }
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: "User not found." });
+
+        user.isPremium = true;
+        user.premiumTier = tier;
+        user.premiumExpires = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+        await user.save();
+
+        await logAction(req.user.userId, "grant_premium", "user", user._id, { tier, durationDays, targetEmail: user.email }, req);
+        return res.json({ success: true, message: `Premium ${tier} granted for ${durationDays} days.` });
+    } catch (err) {
+        console.error("[Admin Grant Premium]", err);
+        return res.status(500).json({ success: false, message: "Failed to grant premium." });
+    }
+});
+
+// POST /admin/users/:id/revoke-premium — remove premium from a user
+router.post("/users/:id/revoke-premium", authorize("admin", "super_admin"), async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ success: false, message: "Invalid user ID." });
+        }
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: "User not found." });
+
+        user.isPremium = false;
+        user.premiumTier = "basic";
+        user.premiumExpires = undefined;
+        await user.save();
+
+        await logAction(req.user.userId, "revoke_premium", "user", user._id, { targetEmail: user.email }, req);
+        return res.json({ success: true, message: "Premium revoked." });
+    } catch (err) {
+        console.error("[Admin Revoke Premium]", err);
+        return res.status(500).json({ success: false, message: "Failed to revoke premium." });
+    }
+});
+
+// POST /admin/users/:id/force-logout — invalidate all sessions for a user
+router.post("/users/:id/force-logout", authorize("admin", "super_admin"), async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ success: false, message: "Invalid user ID." });
+        }
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: "User not found." });
+
+        // Clear all refresh tokens — all sessions become invalid
+        user.refreshTokens = [];
+        await user.save();
+
+        await logAction(req.user.userId, "force_logout", "user", user._id, { targetEmail: user.email }, req);
+        return res.json({ success: true, message: "User has been logged out from all devices." });
+    } catch (err) {
+        console.error("[Admin Force Logout]", err);
+        return res.status(500).json({ success: false, message: "Failed to force logout." });
+    }
+});
+
+// POST /admin/users/:id/verify — manually verify a user's email
+router.post("/users/:id/verify", authorize("admin", "super_admin"), async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ success: false, message: "Invalid user ID." });
+        }
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: "User not found." });
+
+        user.emailVerified = true;
+        if (!user.isMember) {
+            user.isMember = true;
+            user.memberSince = user.memberSince || new Date();
+            user.isActive = true;
+            user.onboardingComplete = true;
+        }
+        await user.save();
+
+        await logAction(req.user.userId, "manual_verify", "user", user._id, { targetEmail: user.email }, req);
+        return res.json({ success: true, message: "User email verified manually." });
+    } catch (err) {
+        console.error("[Admin Manual Verify]", err);
+        return res.status(500).json({ success: false, message: "Failed to verify user." });
+    }
+});
+
+// POST /admin/users/:id/reset-password — send a password reset email to user
+router.post("/users/:id/reset-password", authorize("admin", "super_admin"), async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ success: false, message: "Invalid user ID." });
+        }
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: "User not found." });
+
+        const crypto = await import("crypto");
+        const resetToken = crypto.randomBytes(32).toString("hex");
+        user.passwordResetToken = resetToken;
+        user.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000);
+        await user.save();
+
+        // Send the reset email
+        const { sendPasswordResetEmail } = await import("../services/emailService.js");
+        await sendPasswordResetEmail(user.email, resetToken).catch(err =>
+            console.error("[Admin Reset Password] Email error:", err.message)
+        );
+
+        await logAction(req.user.userId, "send_password_reset", "user", user._id, { targetEmail: user.email }, req);
+        return res.json({ success: true, message: "Password reset email sent." });
+    } catch (err) {
+        console.error("[Admin Reset Password]", err);
+        return res.status(500).json({ success: false, message: "Failed to send reset email." });
+    }
+});
+
+// PATCH /admin/users/:id — edit user information
+router.patch("/users/:id", authorize("admin", "super_admin"), async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ success: false, message: "Invalid user ID." });
+        }
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: "User not found." });
+
+        // Fields admins are allowed to edit
+        const allowed = [
+            "firstName", "lastName", "phone", "city", "country", "state",
+            "occupation", "aboutMe", "religion", "relationshipGoal",
+            "isActive", "profileCompletion",
+        ];
+        const updates = {};
+        for (const key of allowed) {
+            if (req.body[key] !== undefined) updates[key] = req.body[key];
+        }
+
+        Object.assign(user, updates);
+        await user.save();
+
+        await logAction(req.user.userId, "edit_user", "user", user._id, { fields: Object.keys(updates), targetEmail: user.email }, req);
+        return res.json({ success: true, message: "User updated.", user });
+    } catch (err) {
+        console.error("[Admin Edit User]", err);
+        return res.status(500).json({ success: false, message: "Failed to update user." });
+    }
+});
+
 // ============================================================================
 // ACTIVITY LOGS
 // ============================================================================
