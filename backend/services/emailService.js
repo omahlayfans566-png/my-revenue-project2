@@ -54,7 +54,11 @@ const looksLikePlaceholder = (value) => {
 
 const getCredentials = () => {
   const user = process.env.SMTP_USER || process.env.GMAIL_USER;
-  const pass = process.env.SMTP_PASS || process.env.GMAIL_PASSWORD;
+  // Strip ALL whitespace from the password — Google App Passwords are displayed
+  // with spaces (e.g. "abcd efgh ijkl mnop") but must be sent WITHOUT spaces.
+  // This one-liner makes .env format irrelevant.
+  const rawPass = process.env.SMTP_PASS || process.env.GMAIL_PASSWORD || "";
+  const pass = rawPass.replace(/\s+/g, "");
   const from = process.env.SMTP_FROM || `"DateClone" <${user || "noreply@dateclone.com"}>`;
   return { user, pass, from };
 };
@@ -62,6 +66,7 @@ const getCredentials = () => {
 // ── Transporter factory ───────────────────────────────────────────────────────
 let _transporter = null;
 let _transporterCreatedAt = 0;
+let _transporterPromise = null;   // in-flight guard: prevents concurrent creations
 
 // Re-create the transporter every 4 hours so a resolved IP doesn't go stale
 const TRANSPORTER_TTL_MS = 4 * 60 * 60 * 1000;
@@ -75,7 +80,6 @@ const createTransporter = async () => {
       "   Set GMAIL_USER and GMAIL_PASSWORD (App Password) in backend/.env\n" +
       "   OTP codes will still be printed to the console.\n"
     );
-    // Return null — we'll fall back to console-only mode
     return null;
   }
 
@@ -83,22 +87,27 @@ const createTransporter = async () => {
   const smtpPort = Number(process.env.SMTP_PORT || 587);
   const smtpSecure = String(process.env.SMTP_SECURE || "false").toLowerCase() === "true";
 
-  // Try to resolve the SMTP hostname via Google DNS to bypass blocked local DNS
+  console.log(`[EmailService] Resolving ${smtpHostname} via Google DNS (8.8.8.8)…`);
   const resolvedIp = await resolveViaGoogle(smtpHostname);
+
+  if (resolvedIp) {
+    console.log(`[EmailService] Resolved to IP: ${resolvedIp}`);
+  } else {
+    console.warn(`[EmailService] DNS resolution failed — falling back to hostname`);
+  }
 
   const transportConfig = resolvedIp
     ? {
-      host: resolvedIp,       // connect by IP — bypasses local DNS block
+      host: resolvedIp,
       port: smtpPort,
       secure: smtpSecure,
       tls: {
-        servername: smtpHostname,  // SNI — ensures TLS cert validates against hostname
+        servername: smtpHostname,
         rejectUnauthorized: true,
       },
       auth: { user, pass },
     }
     : {
-      // Fallback: use hostname (works on Render / hotspot / any normal network)
       service: process.env.SMTP_HOST ? undefined : "gmail",
       host: process.env.SMTP_HOST || undefined,
       port: process.env.SMTP_HOST ? smtpPort : undefined,
@@ -106,19 +115,20 @@ const createTransporter = async () => {
       auth: { user, pass },
     };
 
+  console.log(`[EmailService] Creating transporter → ${resolvedIp ?? smtpHostname}:${smtpPort} user=${user}`);
   const t = nodemailer.createTransport(transportConfig);
 
-  // Verify connection — log result but don't throw (server should still start)
   try {
     await t.verify();
-    console.log(`[EmailService] ✅ SMTP ready (${resolvedIp ? `IP: ${resolvedIp}` : smtpHostname}:${smtpPort})`);
+    console.log(`[EmailService] ✅ SMTP connection verified and ready`);
   } catch (verifyErr) {
     console.error(
       `[EmailService] ❌ SMTP verify failed: ${verifyErr.message}\n` +
-      "   Email sending may fail. Check GMAIL_USER / GMAIL_PASSWORD and ensure\n" +
-      "   2-Step Verification is ON and the password is a Google App Password.\n"
+      `   Code: ${verifyErr.code ?? "n/a"} | Response: ${verifyErr.response ?? "n/a"}\n` +
+      "   Check: GMAIL_USER / GMAIL_PASSWORD App Password, 2-Step Verification ON\n"
     );
-    // Still return the transporter — it might work at send time
+    // Return the transporter anyway — sendMail may still work (some SMTP servers
+    // allow sending even if verify() fails due to capability negotiation quirks).
   }
 
   return t;
@@ -126,12 +136,31 @@ const createTransporter = async () => {
 
 const getTransporter = async () => {
   const now = Date.now();
-  if (_transporter && now - _transporterCreatedAt < TRANSPORTER_TTL_MS) {
+
+  // Return cached transporter if still fresh
+  if (_transporter && (now - _transporterCreatedAt) < TRANSPORTER_TTL_MS) {
     return _transporter;
   }
-  _transporter = await createTransporter();
-  _transporterCreatedAt = now;
-  return _transporter;
+
+  // Deduplicate: if a creation is already in-flight, wait for it
+  if (_transporterPromise) {
+    return _transporterPromise;
+  }
+
+  // Start a new creation and cache the promise so concurrent calls share it
+  _transporterPromise = createTransporter()
+    .then((t) => {
+      _transporter = t;
+      _transporterCreatedAt = Date.now();
+      _transporterPromise = null;
+      return t;
+    })
+    .catch((err) => {
+      _transporterPromise = null;
+      throw err;
+    });
+
+  return _transporterPromise;
 };
 
 // ── Retry helper ──────────────────────────────────────────────────────────────
@@ -141,10 +170,20 @@ const sendWithRetry = async (options, maxRetries = 3, delayMs = 1000) => {
     try {
       const t = await getTransporter();
       if (!t) {
-        // SMTP not configured — console-only mode, no throw
+        // SMTP not configured — console-only mode
+        console.log(`[EmailService] Console-only mode — email to ${options.to} not sent via SMTP`);
         return { messageId: "console-only" };
       }
+      console.log(`[EmailService] Sending to ${options.to} (attempt ${attempt}/${maxRetries})…`);
       const info = await t.sendMail(options);
+      console.log(
+        `[EmailService] ✅ Email accepted by SMTP server\n` +
+        `   To:        ${options.to}\n` +
+        `   Subject:   ${options.subject}\n` +
+        `   MessageId: ${info.messageId}\n` +
+        `   Accepted:  ${JSON.stringify(info.accepted)}\n` +
+        `   Rejected:  ${JSON.stringify(info.rejected)}`
+      );
       return info;
     } catch (err) {
       lastErr = err;
@@ -153,11 +192,16 @@ const sendWithRetry = async (options, maxRetries = 3, delayMs = 1000) => {
         err.code === "ETIMEDOUT" ||
         err.code === "ECONNREFUSED" ||
         err.code === "EAI_AGAIN" ||
-        err.responseCode >= 421;  // SMTP 4xx = transient
+        (err.responseCode && err.responseCode >= 421);
 
-      console.warn(
-        `[EmailService] Send attempt ${attempt}/${maxRetries} failed: ${err.message}` +
-        (isTransient ? " (transient — will retry)" : "")
+      console.error(
+        `[EmailService] ❌ Send attempt ${attempt}/${maxRetries} FAILED:\n` +
+        `   To:       ${options.to}\n` +
+        `   Error:    ${err.message}\n` +
+        `   Code:     ${err.code ?? "n/a"}\n` +
+        `   SMTP res: ${err.response ?? "n/a"}\n` +
+        `   Command:  ${err.command ?? "n/a"}` +
+        (isTransient ? "\n   ↳ Transient error — will retry" : "")
       );
 
       if (!isTransient || attempt === maxRetries) break;
