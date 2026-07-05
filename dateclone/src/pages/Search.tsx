@@ -36,7 +36,7 @@ const Search = () => {
     const [hasMore, setHasMore] = useState(false);
     const [total, setTotal] = useState(0);
     const inputRef = useRef<HTMLInputElement>(null);
-    const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         inputRef.current?.focus();

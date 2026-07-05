@@ -103,6 +103,17 @@ const PublicOnlyRoute = ({ children }: { children: ReactNode }) => {
   return !isAuthenticated ? <>{children}</> : <Navigate to="/dashboard" replace />;
 };
 
+// AdminRoute: requires authentication + admin/moderator/super_admin role
+const AdminRoute = ({ children }: { children: ReactNode }) => {
+  const { user, isAuthenticated, loading } = useAuth();
+  if (loading) return <PageLoader />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  const role = user?.role ?? "";
+  const isAdmin = user?.isAdmin || ["admin", "super_admin", "moderator"].includes(role);
+  if (!isAdmin) return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
+};
+
 // ─── Routes ────────────────────────────────────────────────────────────────────
 function AppRoutes() {
   return (
@@ -227,9 +238,9 @@ function AppRoutes() {
         <Route
           path="/admin"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <AdminDashboard />
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
 

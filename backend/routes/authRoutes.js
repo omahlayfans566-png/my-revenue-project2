@@ -42,6 +42,9 @@ const publicUser = (u) => ({
     profilePicture: u.profilePicture,
     isMember: u.isMember ?? false,
     isActive: u.isActive ?? true,
+    // Include role and isAdmin so the frontend can show the Admin button immediately
+    // after login without waiting for /auth/me
+    role: u.role ?? "user",
     isAdmin: u.isAdmin ?? false,
     emailVerified: u.emailVerified ?? false,
     profileCompletion: u.profileCompletion ?? 0,

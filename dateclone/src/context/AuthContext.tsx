@@ -124,20 +124,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         init();
     }, []);
 
-    // ── Automatic logout on tab close / refresh / navigate away ──────────
-    // sessionStorage is cleared when the browser tab is closed, but it
-    // persists across page reloads (F5).  The beforeunload handler clears
-    // auth data just before the page unloads, so on the next page load
-    // the token is gone and the user is redirected to login.
-    useEffect(() => {
-        const handleBeforeUnload = () => {
-            if (getAuthToken()) {
-                clearAuthData();
-            }
-        };
-        window.addEventListener("beforeunload", handleBeforeUnload);
-        return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-    }, []);
+    // sessionStorage clears automatically when the browser tab is closed.
+    // Do NOT add a beforeunload handler — it fires on hard refresh and
+    // navigation, which would clear the token every time the user reloads
+    // the /admin page or any other route, forcing them back to /login.
 
     const login = useCallback(async (email: string, password: string) => {
         const res = await authAPI.login(email, password);
