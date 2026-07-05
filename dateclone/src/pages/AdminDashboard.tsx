@@ -11,7 +11,7 @@ import "../style/admin.css";
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Tab =
     | "dashboard" | "users" | "reports" | "moderation"
-    | "announcements" | "subscriptions" | "logs" | "analytics";
+    | "announcements" | "subscriptions" | "logs" | "analytics" | "email";
 
 interface Toast { id: number; type: "success" | "error" | "info"; msg: string; }
 
@@ -259,6 +259,12 @@ const AdminDashboard = () => {
     // ── Analytics ──────────────────────────────────────────────────────────────
     const [analytics, setAnalytics] = useState<any>(null);
 
+    // ── Email status ────────────────────────────────────────────────────────────
+    const [emailStatus, setEmailStatus] = useState<any>(null);
+    const [testEmailTo, setTestEmailTo] = useState("");
+    const [testEmailLoading, setTestEmailLoading] = useState(false);
+    const [testEmailResult, setTestEmailResult] = useState<{ ok: boolean; msg: string; detail?: any } | null>(null);
+
     // ── Data loaders ──────────────────────────────────────────────────────────
     const loadDashboard = useCallback(async () => {
         setLoading(true);
@@ -327,6 +333,13 @@ const AdminDashboard = () => {
         finally { setLoading(false); }
     }, []);
 
+    const loadEmailStatus = useCallback(async () => {
+        setLoading(true);
+        try { const r = await adminAPI.getEmailStatus(); setEmailStatus(r); }
+        catch (e: any) { addToast(e.message || "Failed to load email status", "error"); }
+        finally { setLoading(false); }
+    }, []);
+
     // ── Tab effect ─────────────────────────────────────────────────────────────
     useEffect(() => {
         if (!isAdmin) { navigate("/dashboard"); return; }
@@ -339,6 +352,7 @@ const AdminDashboard = () => {
             case "subscriptions": loadSubs(subsPage); break;
             case "logs": loadLogs(logsPage); break;
             case "analytics": loadAnalytics(); break;
+            case "email": loadEmailStatus(); break;
         }
     }, [tab, usersPage, reportsPage, flaggedPage, subsPage, logsPage]);
 
@@ -394,6 +408,7 @@ const AdminDashboard = () => {
             { id: "subscriptions", icon: "💳", label: "Subscriptions" },
             { id: "logs", icon: "📝", label: "Audit Logs" },
             { id: "analytics", icon: "📈", label: "Analytics" },
+            { id: "email", icon: "📧", label: "Email Delivery" },
         ] : []),
     ] as const;
 
@@ -401,6 +416,7 @@ const AdminDashboard = () => {
         dashboard: "Dashboard", users: "User Management", reports: "Reports",
         moderation: "Content Moderation", announcements: "Announcements",
         subscriptions: "Subscriptions", logs: "Audit Logs", analytics: "Analytics",
+        email: "Email Delivery Status",
     };
 
     // ── Stat card colors ───────────────────────────────────────────────────────
@@ -912,6 +928,202 @@ const AdminDashboard = () => {
         );
     };
 
+    // ── Email Delivery Status ──────────────────────────────────────────────────
+    const renderEmail = () => {
+        const prov = emailStatus?.provider;
+        const stats = emailStatus?.deliveryStats;
+        const activity = emailStatus?.recentActivity ?? [];
+
+        const ProviderBadge = ({ name, active }: { name: string; active: boolean }) => (
+            <span className={`adm-badge ${active ? "adm-badge-active" : "adm-badge-free"}`}
+                style={{ fontSize: "0.78rem", padding: "4px 12px" }}>
+                {active ? "✅ Active" : "Inactive"} — {name}
+            </span>
+        );
+
+        return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                {/* Provider status cards */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 16 }}>
+                    {/* Active provider */}
+                    <div className="adm-card" style={{ padding: 20 }}>
+                        <div className="adm-chart-label">Active Provider</div>
+                        <div style={{ fontSize: "1.4rem", fontWeight: 900, color: "var(--adm-pink)", marginBottom: 8 }}>
+                            {prov?.active?.toUpperCase() ?? "—"}
+                        </div>
+                        {prov?.active === "resend" && (
+                            <div style={{ fontSize: "0.82rem", color: "var(--adm-muted)" }}>
+                                Key: <code>{prov.resend.keyPreview}</code><br />
+                                From: {prov.resend.from}
+                            </div>
+                        )}
+                        {prov?.active === "smtp" && (
+                            <div style={{ fontSize: "0.82rem", color: "var(--adm-muted)" }}>
+                                Host: {prov.smtp.host}:{prov.smtp.port}<br />
+                                User: {prov.smtp.user}
+                            </div>
+                        )}
+                        {prov?.active === "console" && (
+                            <div style={{ fontSize: "0.82rem", color: "#f59e0b" }}>
+                                ⚠️ Console-only mode — no emails are delivered.<br />
+                                Set RESEND_API_KEY in backend/.env to enable delivery.
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Resend status */}
+                    <div className="adm-card" style={{ padding: 20 }}>
+                        <div className="adm-chart-label">Resend API</div>
+                        <ProviderBadge name="Resend" active={prov?.resend?.configured ?? false} />
+                        <p style={{ fontSize: "0.78rem", color: "var(--adm-muted)", margin: "10px 0 0", lineHeight: 1.5 }}>
+                            {prov?.resend?.configured
+                                ? "Resend is configured. Production-grade deliverability."
+                                : "Not configured. Add RESEND_API_KEY to backend/.env to use Resend."}
+                        </p>
+                    </div>
+
+                    {/* SMTP status */}
+                    <div className="adm-card" style={{ padding: 20 }}>
+                        <div className="adm-chart-label">SMTP Fallback</div>
+                        <ProviderBadge name="SMTP" active={prov?.smtp?.configured ?? false} />
+                        <p style={{ fontSize: "0.78rem", color: "var(--adm-muted)", margin: "10px 0 0", lineHeight: 1.5 }}>
+                            {prov?.smtp?.configured
+                                ? `Gmail SMTP configured (${prov.smtp.user}).`
+                                : "SMTP not configured. Set GMAIL_USER and GMAIL_PASSWORD."}
+                        </p>
+                    </div>
+                </div>
+
+                {/* Delivery stats */}
+                {stats && (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+                        {[
+                            { label: "Sent (24h)", sent: stats.last24h.sent, verified: stats.last24h.verified, rate: stats.last24h.rate },
+                            { label: "Sent (7 days)", sent: stats.last7d.sent, verified: stats.last7d.verified, rate: stats.last7d.rate },
+                            { label: "All Time", sent: stats.allTime.sent, verified: null, rate: null },
+                        ].map((s, i) => (
+                            <div className="adm-card" key={i} style={{ padding: 18 }}>
+                                <div className="adm-chart-label">{s.label}</div>
+                                <div style={{ fontSize: "1.6rem", fontWeight: 900, color: "var(--adm-dark)" }}>{s.sent}</div>
+                                <div style={{ fontSize: "0.78rem", color: "var(--adm-muted)", marginTop: 4 }}>
+                                    OTPs generated
+                                    {s.verified !== null && (
+                                        <> · <strong style={{ color: "var(--adm-success)" }}>{s.verified} verified</strong>
+                                            {s.rate !== null && ` (${s.rate}%)`}</>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* Test email */}
+                <div className="adm-card" style={{ padding: 22 }}>
+                    <div className="adm-card-title" style={{ marginBottom: 14 }}>🧪 Send Test Email</div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+                        <div className="adm-field" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
+                            <label>Recipient email address</label>
+                            <input
+                                type="email"
+                                placeholder="test@example.com"
+                                value={testEmailTo}
+                                onChange={e => { setTestEmailTo(e.target.value); setTestEmailResult(null); }}
+                            />
+                        </div>
+                        <button
+                            className="adm-btn adm-btn-primary"
+                            disabled={testEmailLoading || !testEmailTo.trim()}
+                            onClick={async () => {
+                                setTestEmailLoading(true);
+                                setTestEmailResult(null);
+                                try {
+                                    const r = await adminAPI.sendTestEmail(testEmailTo.trim());
+                                    setTestEmailResult({ ok: true, msg: r.message, detail: r.result });
+                                } catch (e: any) {
+                                    setTestEmailResult({ ok: false, msg: e.message || "Send failed" });
+                                } finally {
+                                    setTestEmailLoading(false);
+                                }
+                            }}
+                        >
+                            {testEmailLoading ? "Sending…" : "Send Test Email"}
+                        </button>
+                    </div>
+                    {testEmailResult && (
+                        <div style={{
+                            marginTop: 14, padding: "12px 16px", borderRadius: 10,
+                            background: testEmailResult.ok ? "#ECFDF5" : "#FEF2F2",
+                            border: `1px solid ${testEmailResult.ok ? "#A7F3D0" : "#FCA5A5"}`,
+                            color: testEmailResult.ok ? "#065F46" : "#991B1B",
+                            fontSize: "0.85rem",
+                        }}>
+                            {testEmailResult.ok ? "✅" : "❌"} {testEmailResult.msg}
+                            {testEmailResult.detail && (
+                                <div style={{ marginTop: 8, fontSize: "0.78rem", opacity: 0.85 }}>
+                                    Provider: {testEmailResult.detail.provider} ·
+                                    MessageId: {testEmailResult.detail.messageId} ·
+                                    {testEmailResult.detail.elapsed_ms}ms
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Recent OTP activity */}
+                <div className="adm-card" style={{ overflow: "hidden" }}>
+                    <div style={{ padding: "16px 20px", fontWeight: 800, fontSize: "0.95rem", color: "var(--adm-dark)", borderBottom: "1px solid var(--adm-border)" }}>
+                        Recent OTP Activity
+                    </div>
+                    <div className="adm-table-wrap">
+                        <table className="adm-table">
+                            <thead>
+                                <tr>
+                                    <th>Email (masked)</th>
+                                    <th>Hash</th>
+                                    <th>Verified</th>
+                                    <th>Resends</th>
+                                    <th>Generated</th>
+                                    <th>Expires</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {activity.length === 0
+                                    ? <tr className="adm-empty-row"><td colSpan={6}>No OTP activity yet</td></tr>
+                                    : activity.map((a: any, i: number) => (
+                                        <tr key={i}>
+                                            <td style={{ fontFamily: "monospace", fontSize: "0.82rem" }}>{a.email}</td>
+                                            <td>
+                                                <span className={`adm-badge ${a.hashType === "hmac" ? "adm-badge-active" : "adm-badge-pending"}`}>
+                                                    {a.hashType || "bcrypt"}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {a.used
+                                                    ? <span className="adm-badge adm-badge-active">✅ Yes</span>
+                                                    : <span className="adm-badge adm-badge-pending">⏳ Pending</span>}
+                                            </td>
+                                            <td style={{ fontSize: "0.82rem", textAlign: "center" }}>{a.resendCount}</td>
+                                            <td style={{ fontSize: "0.78rem", color: "var(--adm-muted)" }}>
+                                                {a.createdAt ? new Date(a.createdAt).toLocaleString() : "—"}
+                                            </td>
+                                            <td style={{ fontSize: "0.78rem", color: "var(--adm-muted)" }}>
+                                                {a.expiresAt ? new Date(a.expiresAt).toLocaleString() : "—"}
+                                            </td>
+                                        </tr>
+                                    ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style={{ padding: "10px 20px", textAlign: "right" }}>
+                        <button className="adm-btn adm-btn-outline adm-btn-sm" onClick={loadEmailStatus}>
+                            ↺ Refresh
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     // ── Main render ────────────────────────────────────────────────────────────
     return (
         <div className="adm-shell">
@@ -989,6 +1201,7 @@ const AdminDashboard = () => {
                     {tab === "subscriptions" && renderSubscriptions()}
                     {tab === "logs" && renderLogs()}
                     {tab === "analytics" && renderAnalytics()}
+                    {tab === "email" && renderEmail()}
                 </div>
             </main>
 

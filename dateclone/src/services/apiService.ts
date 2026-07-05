@@ -493,6 +493,15 @@ export const adminAPI = {
             method: "PATCH",
             body: JSON.stringify(data),
         }),
+
+    // Email delivery status
+    getEmailStatus: async () => apiCall("/admin/email/status"),
+
+    sendTestEmail: async (to: string) =>
+        apiCall("/admin/email/test", {
+            method: "POST",
+            body: JSON.stringify({ to }),
+        }),
 };
 
 // ============================================

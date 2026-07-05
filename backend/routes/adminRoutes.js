@@ -966,3 +966,131 @@ router.get("/analytics", authorize("admin", "super_admin"), async (req, res) => 
 });
 
 export default router;
+
+// ============================================================================
+// EMAIL DELIVERY STATUS
+// ============================================================================
+
+// GET /admin/email/status — current provider config and delivery stats
+router.get("/email/status", authorize("admin", "super_admin"), async (req, res) => {
+    try {
+        const { getActiveProvider, EMAIL_CONFIG } = await import("../services/emailService.js");
+        const provider = getActiveProvider();
+
+        // Count OTP records to show delivery activity
+        const { Otp } = await import("../models/Otp.js");
+        const now = new Date();
+        const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const last7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+        const [total24h, used24h, total7d, used7d, totalEver] = await Promise.all([
+            Otp.countDocuments({ createdAt: { $gte: last24h } }),
+            Otp.countDocuments({ createdAt: { $gte: last24h }, used: true }),
+            Otp.countDocuments({ createdAt: { $gte: last7d } }),
+            Otp.countDocuments({ createdAt: { $gte: last7d }, used: true }),
+            Otp.countDocuments({}),
+        ]);
+
+        // Recent OTP activity (last 20, no sensitive fields)
+        const recentOtps = await Otp.find({})
+            .sort({ createdAt: -1 })
+            .limit(20)
+            .select("email hashType used createdAt expiresAt resendCount")
+            .lean();
+
+        const providerInfo = {
+            active: provider,
+            resend: {
+                configured: !!(process.env.RESEND_API_KEY && !process.env.RESEND_API_KEY.startsWith("your_")),
+                keyPreview: process.env.RESEND_API_KEY
+                    ? `re_***${process.env.RESEND_API_KEY.slice(-4)}`
+                    : null,
+                from: provider === "resend" ? EMAIL_CONFIG.fromAddress : null,
+            },
+            smtp: {
+                configured: !!(process.env.GMAIL_USER || process.env.SMTP_USER),
+                user: process.env.GMAIL_USER || process.env.SMTP_USER || null,
+                host: process.env.SMTP_HOST || "smtp.gmail.com",
+                port: process.env.SMTP_PORT || 587,
+            },
+        };
+
+        const deliveryStats = {
+            last24h: { sent: total24h, verified: used24h, rate: total24h > 0 ? Math.round((used24h / total24h) * 100) : 0 },
+            last7d: { sent: total7d, verified: used7d, rate: total7d > 0 ? Math.round((used7d / total7d) * 100) : 0 },
+            allTime: { sent: totalEver },
+        };
+
+        return res.json({
+            success: true,
+            provider: providerInfo,
+            deliveryStats,
+            recentActivity: recentOtps.map(o => ({
+                email: o.email.replace(/(.{2})(.*)(@.*)/, "$1***$3"), // mask middle
+                hashType: o.hashType || "bcrypt",
+                used: o.used,
+                resendCount: o.resendCount || 0,
+                createdAt: o.createdAt,
+                expiresAt: o.expiresAt,
+            })),
+        });
+    } catch (err) {
+        console.error("[Admin Email Status]", err);
+        return res.status(500).json({ success: false, message: "Failed to fetch email status." });
+    }
+});
+
+// POST /admin/email/test — send a test email to the specified address
+router.post("/email/test", authorize("admin", "super_admin"), async (req, res) => {
+    try {
+        const { to } = req.body;
+        if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+            return res.status(400).json({ success: false, message: "A valid recipient email address is required." });
+        }
+
+        const { sendEmail, getActiveProvider, EMAIL_CONFIG } = await import("../services/emailService.js");
+        const provider = getActiveProvider();
+
+        const startTime = Date.now();
+        const result = await sendEmail({
+            to,
+            subject: "DateClone Admin — Email Test",
+            html: `
+                <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff;border-radius:16px;border:1px solid #f0f0f0;">
+                    <h2 style="color:#FF4D8D;margin:0 0 16px;">✅ Email Delivery Test</h2>
+                    <p style="color:#333;margin:0 0 12px;">This is a test email sent from the DateClone admin panel.</p>
+                    <table style="width:100%;font-size:13px;color:#555;border-collapse:collapse;">
+                        <tr><td style="padding:6px 0;font-weight:600;width:120px;">Provider</td><td>${provider}</td></tr>
+                        <tr><td style="padding:6px 0;font-weight:600;">From</td><td>${EMAIL_CONFIG.fromAddress}</td></tr>
+                        <tr><td style="padding:6px 0;font-weight:600;">To</td><td>${to}</td></tr>
+                        <tr><td style="padding:6px 0;font-weight:600;">Time</td><td>${new Date().toISOString()}</td></tr>
+                    </table>
+                    <p style="color:#aaa;font-size:11px;margin:20px 0 0;">Sent by admin: ${req.userDoc?.email}</p>
+                </div>`,
+            text: `DateClone Admin Email Test\n\nProvider: ${provider}\nFrom: ${EMAIL_CONFIG.fromAddress}\nTo: ${to}\nTime: ${new Date().toISOString()}`,
+        });
+
+        const elapsed = Date.now() - startTime;
+
+        await logAction(req.user.userId, "test_email", "system", null, { to, provider, messageId: result.messageId }, req);
+
+        return res.json({
+            success: true,
+            message: `Test email sent successfully via ${provider}.`,
+            result: {
+                provider,
+                messageId: result.messageId,
+                to,
+                elapsed_ms: elapsed,
+                from: EMAIL_CONFIG.fromAddress,
+            },
+        });
+    } catch (err) {
+        console.error("[Admin Email Test]", err);
+        return res.status(500).json({
+            success: false,
+            message: `Email delivery failed: ${err.message}`,
+            error: { code: err.code, statusCode: err.statusCode },
+        });
+    }
+});
