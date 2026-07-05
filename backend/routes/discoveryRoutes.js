@@ -49,13 +49,26 @@ router.get("/", authenticateToken, async (req, res) => {
             blocked: { $nin: [currentUser._id] },
         };
 
+        // ── Diagnostic: log total before filters ─────────────────────────────
+        const totalBeforeFilters = await User.countDocuments({ _id: { $ne: currentUser._id } });
+        console.log(`[Discovery] total users in DB (excl. self): ${totalBeforeFilters}`);
+
+        const banned = await User.countDocuments({ _id: { $ne: currentUser._id }, isBanned: false, isActive: true });
+        console.log(`[Discovery] after active+banned filter: ${banned}`);
+
+        const verified = await User.countDocuments({ _id: { $ne: currentUser._id }, isBanned: false, isActive: true, emailVerified: true });
+        console.log(`[Discovery] after emailVerified filter: ${verified}`);
+
         // ── Gender filter ────────────────────────────────────────────────────
+        // Only filter by gender if explicitly requested in query param.
+        // Do NOT auto-apply from currentUser.lookingFor — this silently excludes
+        // users who haven't set their gender field.
         if (gender) {
             query.gender = gender;
-        } else if (currentUser.lookingFor) {
-            const genderMap = { men: ["male"], women: ["female"], both: ["male", "female", "other"] };
-            query.gender = { $in: genderMap[currentUser.lookingFor] || ["male", "female", "other"] };
+            console.log(`[Discovery] gender filter applied: ${gender}`);
         }
+        // NOTE: lookingFor-based gender filtering is intentionally removed.
+        // It excluded candidates who hadn't filled in the gender field.
 
         // ── Looking for filter ───────────────────────────────────────────────
         if (lookingFor) {
@@ -63,9 +76,18 @@ router.get("/", authenticateToken, async (req, res) => {
         }
 
         // ── Age filter ───────────────────────────────────────────────────────
-        const ageMin = parseInt(minAge) || currentUser.minAge || 18;
-        const ageMax = parseInt(maxAge) || currentUser.maxAge || 100;
-        query.age = { $gte: ageMin, $lte: ageMax };
+        // ONLY apply if explicitly requested via query param OR if the current
+        // user has minAge/maxAge set. NEVER assume age = 18-100 as a hard filter
+        // because many registered users don't have an `age` field set yet.
+        const ageMin = parseInt(minAge) || currentUser.minAge || null;
+        const ageMax = parseInt(maxAge) || currentUser.maxAge || null;
+        if (ageMin && ageMax && ageMin < ageMax) {
+            // Include users with no age set so we never accidentally exclude everyone
+            query.$or = query.$or
+                ? [{ $and: [{ age: { $gte: ageMin, $lte: ageMax } }] }, { age: { $exists: false } }, { age: null }]
+                : [{ age: { $gte: ageMin, $lte: ageMax } }, { age: { $exists: false } }, { age: null }];
+            console.log(`[Discovery] age filter applied: ${ageMin}-${ageMax} (includes null age)`);
+        }
 
         // ── Online now filter ────────────────────────────────────────────────
         if (online === "true") {
@@ -176,6 +198,7 @@ router.get("/", authenticateToken, async (req, res) => {
         // ── Execute query with pagination ────────────────────────────────────
         const skip = (parseInt(page) - 1) * parseInt(limit);
         const total = await User.countDocuments(query);
+        console.log(`[Discovery] final query total before pagination: ${total}`);
 
         let users = await User.find(query)
             .select(PUBLIC_FIELDS)
