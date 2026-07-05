@@ -187,10 +187,10 @@ export const matchAPI = {
 // ============================================
 
 export const messageAPI = {
-    sendMessage: async (toUserId: string, content: string, image: string | null = null) => {
+    sendMessage: async (toUserId: string, content: string, image: string | null = null, replyTo?: string) => {
         return apiCall("/messages/send", {
             method: "POST",
-            body: JSON.stringify({ toUserId, content, image }),
+            body: JSON.stringify({ toUserId, content, image, replyTo }),
         });
     },
 
@@ -200,14 +200,26 @@ export const messageAPI = {
         );
     },
 
-    getAllConversations: async () => {
-        return apiCall("/messages");
+    getAllConversations: async (search?: string) => {
+        const query = search ? `?search=${encodeURIComponent(search)}` : "";
+        return apiCall(`/messages${query}`);
     },
 
     deleteMessage: async (messageId: string) => {
         return apiCall(`/messages/${messageId}`, {
             method: "DELETE",
         });
+    },
+
+    reactToMessage: async (messageId: string, reaction: string) => {
+        return apiCall(`/messages/react/${messageId}`, {
+            method: "POST",
+            body: JSON.stringify({ reaction }),
+        });
+    },
+
+    searchMessages: async (q: string) => {
+        return apiCall(`/messages/search?q=${encodeURIComponent(q)}`);
     },
 };
 
@@ -445,6 +457,30 @@ export const adminAPI = {
         }),
 };
 
+// ============================================
+// DISCOVERY ENDPOINTS
+// ============================================
+
+export const discoveryAPI = {
+    getUsers: async (filters: Record<string, any> = {}) => {
+        const queryParams = new URLSearchParams();
+        Object.entries(filters).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== "") {
+                queryParams.set(key, String(value));
+            }
+        });
+        return apiCall(`/discover${queryParams.toString() ? `?${queryParams.toString()}` : ""}`);
+    },
+
+    getFilters: async () => apiCall("/discover/filters"),
+
+    updateLocation: async (latitude: number, longitude: number) =>
+        apiCall("/discover/location", {
+            method: "POST",
+            body: JSON.stringify({ latitude, longitude }),
+        }),
+};
+
 export default {
     authAPI,
     profileAPI,
@@ -453,4 +489,5 @@ export default {
     paymentAPI,
     notificationAPI,
     adminAPI,
+    discoveryAPI,
 };

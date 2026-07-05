@@ -1,0 +1,406 @@
+/* ── Profile Wizard ─────────────────────────────────────────────────────────── */
+.wizard-overlay {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #fce4ec 0%, #fff 50%, #f3e5f5 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.wizard-container {
+    background: #fff;
+    border-radius: 24px;
+    padding: 32px;
+    max-width: 560px;
+    width: 100%;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.08);
+    animation: wizardIn 0.4s ease;
+}
+
+@keyframes wizardIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Progress ───────────────────────────────────────────────────────────────── */
+.wizard-progress {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.wizard-progress-bar {
+    flex: 1;
+    height: 6px;
+    background: #f0f0f0;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.wizard-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #e91e63, #ff6f00);
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+
+.wizard-progress-text {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #e91e63;
+    min-width: 40px;
+    text-align: right;
+}
+
+/* ── Steps ──────────────────────────────────────────────────────────────────── */
+.wizard-steps {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 28px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
+.wizard-step-dot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 8px;
+    transition: all 0.2s;
+    min-width: 60px;
+}
+
+.wizard-step-dot:hover {
+    background: rgba(233, 30, 99, 0.05);
+}
+
+.wizard-step-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    background: #f5f5f5;
+    color: #999;
+    transition: all 0.3s;
+}
+
+.wizard-step-dot.active .wizard-step-icon {
+    background: #e91e63;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(233, 30, 99, 0.3);
+}
+
+.wizard-step-dot.done .wizard-step-icon {
+    background: #4caf50;
+    color: #fff;
+}
+
+.wizard-step-label {
+    font-size: 0.65rem;
+    color: #999;
+    white-space: nowrap;
+}
+
+.wizard-step-dot.active .wizard-step-label {
+    color: #e91e63;
+    font-weight: 600;
+}
+
+.wizard-step-dot.done .wizard-step-label {
+    color: #4caf50;
+}
+
+/* ── Content ────────────────────────────────────────────────────────────────── */
+.wizard-content {
+    min-height: 300px;
+}
+
+.wizard-title {
+    font-size: 1.3rem;
+    color: #333;
+    margin-bottom: 16px;
+}
+
+.wizard-desc {
+    color: #777;
+    font-size: 0.9rem;
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+
+.wizard-hint {
+    font-size: 0.78rem;
+    color: #aaa;
+    margin-top: 8px;
+}
+
+/* ── Photo Upload ───────────────────────────────────────────────────────────── */
+.photo-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.photo-upload-item {
+    aspect-ratio: 1;
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+    background: #f5f5f5;
+}
+
+.photo-upload-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.photo-remove {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font-size: 0.7rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.photo-upload-add {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed #ddd;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: #999;
+}
+
+.photo-upload-add:hover {
+    border-color: #e91e63;
+    color: #e91e63;
+    background: rgba(233, 30, 99, 0.03);
+}
+
+.photo-upload-add span:first-child {
+    font-size: 2rem;
+    font-weight: 300;
+}
+
+.photo-upload-label {
+    font-size: 0.75rem;
+    margin-top: 4px;
+}
+
+/* ── Bio ────────────────────────────────────────────────────────────────────── */
+.wizard-textarea {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    resize: vertical;
+    font-family: inherit;
+    transition: border-color 0.2s;
+    background: #fafafa;
+}
+
+.wizard-textarea:focus {
+    outline: none;
+    border-color: #e91e63;
+    background: #fff;
+}
+
+/* ── Input Groups ───────────────────────────────────────────────────────────── */
+.wizard-input-group {
+    margin-bottom: 16px;
+}
+
+.wizard-input-group label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #555;
+    margin-bottom: 6px;
+}
+
+.wizard-input-group input,
+.wizard-input-group select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    background: #fafafa;
+    transition: border-color 0.2s;
+}
+
+.wizard-input-group input:focus,
+.wizard-input-group select:focus {
+    outline: none;
+    border-color: #e91e63;
+    background: #fff;
+}
+
+/* ── Interests ──────────────────────────────────────────────────────────────── */
+.interest-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.interest-chip {
+    padding: 8px 16px;
+    border-radius: 20px;
+    border: 1px solid #e0e0e0;
+    background: #fafafa;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: #555;
+}
+
+.interest-chip:hover {
+    border-color: #e91e63;
+    background: rgba(233, 30, 99, 0.05);
+}
+
+.interest-chip.active {
+    background: #e91e63;
+    color: #fff;
+    border-color: #e91e63;
+}
+
+/* ── Goals ──────────────────────────────────────────────────────────────────── */
+.goal-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.goal-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 20px 12px;
+    border-radius: 16px;
+    border: 2px solid #f0f0f0;
+    background: #fafafa;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.goal-card:hover {
+    border-color: #e91e63;
+    background: rgba(233, 30, 99, 0.03);
+}
+
+.goal-card.active {
+    border-color: #e91e63;
+    background: rgba(233, 30, 99, 0.08);
+}
+
+.goal-icon {
+    font-size: 1.8rem;
+}
+
+.goal-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #555;
+    text-transform: capitalize;
+}
+
+.goal-card.active .goal-label {
+    color: #e91e63;
+}
+
+/* ── Actions ────────────────────────────────────────────────────────────────── */
+.wizard-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid #f0f0f0;
+}
+
+.wizard-actions .btn {
+    min-width: 120px;
+    padding: 12px 24px;
+}
+
+/* ── Complete ───────────────────────────────────────────────────────────────── */
+.wizard-complete {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #fce4ec, #fff, #f3e5f5);
+    padding: 40px;
+    text-align: center;
+}
+
+.wizard-complete-icon {
+    font-size: 4rem;
+    margin-bottom: 16px;
+    animation: bounce 1s ease infinite;
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+.wizard-complete h2 {
+    font-size: 1.8rem;
+    color: #e91e63;
+    margin-bottom: 8px;
+}
+
+.wizard-complete p {
+    color: #777;
+    margin-bottom: 20px;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+    .wizard-container {
+        padding: 20px;
+    }
+
+    .photo-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .goal-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .wizard-steps {
+        gap: 2px;
+    }
+
+    .wizard-step-dot {
+        min-width: 50px;
+        padding: 4px;
+    }
+}

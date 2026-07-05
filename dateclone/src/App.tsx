@@ -21,6 +21,7 @@ import Notifications from "./pages/Notifications";
 import Profile from "./pages/Profile";
 import EditProfile from "./pages/EditProfile";
 import Settings from "./pages/Settings";
+import ProfileWizard from "./component/ProfileWizard";
 import ViewProfile from "./pages/ViewProfile";
 import AdminDashboard from "./pages/AdminDashboard";
 
@@ -68,6 +69,7 @@ function AppRoutes() {
       <Route path="/profile/edit" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
       <Route path="/profile/:userId" element={<ProtectedRoute><ViewProfile /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+      <Route path="/wizard" element={<ProtectedRoute><ProfileWizard /></ProtectedRoute>} />
       <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
 
       <Route path="*" element={<Navigate to="/" replace />} />

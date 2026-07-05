@@ -17,6 +17,7 @@ import paymentRoutes from "./routes/paymentRoutes.js";
 import messageRoutes from "./routes/messageRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
+import discoveryRoutes from "./routes/discoveryRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { verifyEmailService } from "./services/emailService.js";
 import { requestLogger } from "./middleware/requestLogger.js";
@@ -131,6 +132,7 @@ app.use("/api/payment", paymentRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/discover", discoveryRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {

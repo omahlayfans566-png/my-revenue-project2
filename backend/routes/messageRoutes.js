@@ -11,12 +11,19 @@ const router = express.Router();
 router.post("/send", authenticateToken, async (req, res) => {
     try {
         const { userId } = req.user;
-        const { toUserId, content, image } = req.body;
+        const { toUserId, content, image, messageType, replyTo } = req.body;
 
-        if (!toUserId || !content) {
+        if (!toUserId) {
             return res.status(400).json({
                 success: false,
-                message: "Recipient ID and message content are required",
+                message: "Recipient ID is required",
+            });
+        }
+
+        if (!content && !image) {
+            return res.status(400).json({
+                success: false,
+                message: "Message content or image is required",
             });
         }
 
@@ -42,12 +49,27 @@ router.post("/send", authenticateToken, async (req, res) => {
             });
         }
 
+        // Build reply data if replying to a message
+        let replyData = {};
+        if (replyTo) {
+            const originalMsg = await Message.findById(replyTo).populate("fromUserId", "firstName lastName").lean();
+            if (originalMsg) {
+                replyData = {
+                    replyTo: originalMsg._id,
+                    replyContent: originalMsg.content || (originalMsg.image ? "[Image]" : ""),
+                    replyFrom: originalMsg.fromUserId?.firstName || "Unknown",
+                };
+            }
+        }
+
         // Create message
         const message = new Message({
             fromUserId: userId,
             toUserId,
-            content,
-            image,
+            content: content || "",
+            image: image || null,
+            messageType: messageType || (image ? "image" : "text"),
+            ...replyData,
         });
 
         await message.save();
@@ -70,17 +92,104 @@ router.post("/send", authenticateToken, async (req, res) => {
             metadata: { fromUserId: userId, conversationId: userId },
         }).catch(() => {});
 
+        // Emit real-time notification
+        if (global.io) {
+            global.io.to(`user:${toUserId}`).emit("new_message", message);
+        }
+
+        const populated = await Message.findById(message._id)
+            .populate("fromUserId", "firstName lastName profilePicture")
+            .populate("toUserId", "firstName lastName profilePicture")
+            .lean();
+
         res.status(201).json({
             success: true,
             message: "Message sent",
-            data: message,
+            data: populated,
         });
     } catch (error) {
-        console.error(error);
+        console.error("[Send Message]", error);
         res.status(500).json({
             success: false,
             message: "Failed to send message",
         });
+    }
+});
+
+// POST: React to Message
+router.post("/react/:messageId", authenticateToken, async (req, res) => {
+    try {
+        const { userId } = req.user;
+        const { messageId } = req.params;
+        const { reaction } = req.body;
+
+        const message = await Message.findById(messageId);
+        if (!message) {
+            return res.status(404).json({ success: false, message: "Message not found" });
+        }
+
+        // Check user is part of this conversation
+        if (message.fromUserId.toString() !== userId && message.toUserId.toString() !== userId) {
+            return res.status(403).json({ success: false, message: "Not part of this conversation" });
+        }
+
+        // Toggle reaction off if same one
+        if (message.reaction === reaction) {
+            message.reaction = null;
+        } else {
+            message.reaction = reaction;
+        }
+
+        await message.save();
+
+        // Notify the other user via socket
+        const otherUserId = message.fromUserId.toString() === userId
+            ? message.toUserId.toString()
+            : message.fromUserId.toString();
+        if (global.io) {
+            global.io.to(`user:${otherUserId}`).emit("message_reaction", {
+                messageId: message._id,
+                reaction: message.reaction,
+                userId,
+            });
+        }
+
+        res.json({ success: true, reaction: message.reaction });
+    } catch (error) {
+        console.error("[React Message]", error);
+        res.status(500).json({ success: false, message: "Failed to react" });
+    }
+});
+
+// DELETE: Delete Message (soft delete)
+router.delete("/:messageId", authenticateToken, async (req, res) => {
+    try {
+        const { userId } = req.user;
+        const { messageId } = req.params;
+
+        const message = await Message.findById(messageId);
+        if (!message) {
+            return res.status(404).json({ success: false, message: "Message not found" });
+        }
+
+        if (message.fromUserId.toString() !== userId) {
+            return res.status(403).json({
+                success: false,
+                message: "You can only delete your own messages",
+            });
+        }
+
+        message.isDeleted = true;
+        message.deletedFor = message.deletedFor || [];
+        if (!message.deletedFor.includes(userId)) {
+            message.deletedFor.push(userId);
+        }
+        await message.save();
+
+        res.json({ success: true, message: "Message deleted" });
+    } catch (error) {
+        console.error("[Delete Message]", error);
+        res.status(500).json({ success: false, message: "Failed to delete message" });
     }
 });
 
@@ -113,12 +222,17 @@ router.get("/conversation/:otherUserId", authenticateToken, async (req, res) => 
                 { fromUserId: userId, toUserId: otherUserId },
                 { fromUserId: otherUserId, toUserId: userId },
             ],
-            isDeleted: false,
+            $or: [
+                { isDeleted: false },
+                { deletedFor: { $nin: [userId] } },
+            ],
         })
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(parseInt(limit))
-            .populate("fromUserId toUserId", "-password");
+            .populate("fromUserId toUserId", "firstName lastName profilePicture")
+            .populate("replyTo", "content image fromUserId")
+            .lean();
 
         // Mark messages as read
         await Message.updateMany(
@@ -134,7 +248,7 @@ router.get("/conversation/:otherUserId", authenticateToken, async (req, res) => 
         );
 
         const otherUser = await User.findById(otherUserId).select(
-            "-password -verificationToken"
+            "-password -verificationToken -refreshTokens"
         );
 
         res.json({
@@ -143,7 +257,7 @@ router.get("/conversation/:otherUserId", authenticateToken, async (req, res) => 
             otherUser,
         });
     } catch (error) {
-        console.error(error);
+        console.error("[Get Conversation]", error);
         res.status(500).json({
             success: false,
             message: "Failed to fetch messages",
@@ -155,19 +269,37 @@ router.get("/conversation/:otherUserId", authenticateToken, async (req, res) => 
 router.get("/", authenticateToken, async (req, res) => {
     try {
         const { userId } = req.user;
+        const { search } = req.query;
 
-        // Get all matched conversations
-        const conversations = await Match.find({
+        let matchQuery = {
             $or: [{ userId, status: "matched" }, { matchedUserId: userId, status: "matched" }],
-        }).populate("userId matchedUserId", "-password");
+        };
+
+        const conversations = await Match.find(matchQuery)
+            .populate("userId matchedUserId", "firstName lastName profilePicture")
+            .sort({ lastMessageAt: -1 })
+            .lean();
 
         // Get latest message for each conversation
         const conversationData = await Promise.all(
             conversations.map(async (conv) => {
                 const otherUserId =
-                    conv.userId.toString() === userId
+                    conv.userId._id.toString() === userId
                         ? conv.matchedUserId._id
                         : conv.userId._id;
+
+                // Search filter
+                if (search) {
+                    const lastMsg = await Message.findOne({
+                        $or: [
+                            { fromUserId: userId, toUserId: otherUserId },
+                            { fromUserId: otherUserId, toUserId: userId },
+                        ],
+                        content: { $regex: search, $options: "i" },
+                        isDeleted: false,
+                    }).sort({ createdAt: -1 });
+                    if (!lastMsg) return null;
+                }
 
                 const lastMessage = await Message.findOne({
                     $or: [
@@ -175,7 +307,7 @@ router.get("/", authenticateToken, async (req, res) => {
                         { fromUserId: otherUserId, toUserId: userId },
                     ],
                     isDeleted: false,
-                }).sort({ createdAt: -1 });
+                }).sort({ createdAt: -1 }).lean();
 
                 const unreadCount = await Message.countDocuments({
                     toUserId: userId,
@@ -187,7 +319,7 @@ router.get("/", authenticateToken, async (req, res) => {
                 return {
                     _id: conv._id,
                     user:
-                        conv.userId.toString() === userId ? conv.matchedUserId : conv.userId,
+                        conv.userId._id.toString() === userId ? conv.matchedUserId : conv.userId,
                     lastMessage,
                     unreadCount,
                     matchedAt: conv.matchedAt,
@@ -195,8 +327,11 @@ router.get("/", authenticateToken, async (req, res) => {
             })
         );
 
+        // Remove nulls (filtered out by search)
+        const filtered = conversationData.filter(Boolean);
+
         // Sort by last message date
-        conversationData.sort((a, b) => {
+        filtered.sort((a, b) => {
             const timeA = a.lastMessage?.createdAt || a.matchedAt;
             const timeB = b.lastMessage?.createdAt || b.matchedAt;
             return new Date(timeB) - new Date(timeA);
@@ -204,10 +339,10 @@ router.get("/", authenticateToken, async (req, res) => {
 
         res.json({
             success: true,
-            conversations: conversationData,
+            conversations: filtered,
         });
     } catch (error) {
-        console.error(error);
+        console.error("[Get Conversations]", error);
         res.status(500).json({
             success: false,
             message: "Failed to fetch conversations",
@@ -215,41 +350,33 @@ router.get("/", authenticateToken, async (req, res) => {
     }
 });
 
-// DELETE: Delete Message
-router.delete("/:messageId", authenticateToken, async (req, res) => {
+// GET: Search Messages
+router.get("/search", authenticateToken, async (req, res) => {
     try {
         const { userId } = req.user;
-        const { messageId } = req.params;
+        const { q } = req.query;
 
-        const message = await Message.findById(messageId);
-
-        if (!message) {
-            return res.status(404).json({
-                success: false,
-                message: "Message not found",
-            });
+        if (!q) {
+            return res.status(400).json({ success: false, message: "Search query required" });
         }
 
-        if (message.fromUserId.toString() !== userId) {
-            return res.status(403).json({
-                success: false,
-                message: "You can only delete your own messages",
-            });
-        }
+        const messages = await Message.find({
+            $or: [
+                { fromUserId: userId },
+                { toUserId: userId },
+            ],
+            content: { $regex: q, $options: "i" },
+            isDeleted: false,
+        })
+            .sort({ createdAt: -1 })
+            .limit(20)
+            .populate("fromUserId toUserId", "firstName lastName profilePicture")
+            .lean();
 
-        message.isDeleted = true;
-        await message.save();
-
-        res.json({
-            success: true,
-            message: "Message deleted",
-        });
+        res.json({ success: true, messages });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            success: false,
-            message: "Failed to delete message",
-        });
+        console.error("[Search Messages]", error);
+        res.status(500).json({ success: false, message: "Search failed" });
     }
 });
 

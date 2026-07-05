@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import AppNavbar from "../component/AppNavbar";
-import { matchAPI } from "../services/apiService";
+import { discoveryAPI, matchAPI } from "../services/apiService";
 import { useSocket } from "../context/SocketContext";
 import "../style/discover.css";
 
@@ -9,25 +9,55 @@ import "../style/discover.css";
 interface Profile {
     _id: string; firstName: string; lastName: string;
     profilePicture?: string; photos?: string[];
-    age?: number; city?: string; country?: string; distance?: string | number;
+    age?: number; city?: string; country?: string; distance?: number;
     occupation?: string; aboutMe?: string;
     interests?: string[]; relationshipGoal?: string;
     education?: string; religion?: string;
     compatibilityScore?: number; isVerified?: boolean;
-    isPremium?: boolean; memberSince?: string; lastLogin?: string;
+    isPremium?: boolean; isOnline?: boolean;
+    memberSince?: string; lastLogin?: string;
+    profileCompletion?: number;
 }
 
-type FeedTab = "for-you" | "new" | "active" | "nearby" | "online";
+interface FilterState {
+    distance: string;
+    minAge: string;
+    maxAge: string;
+    gender: string;
+    lookingFor: string;
+    online: string;
+    recentlyActive: string;
+    verifiedOnly: string;
+    interests: string[];
+    relationshipGoal: string;
+    religion: string;
+}
 
-const TABS: { key: FeedTab; label: string; icon: string }[] = [
-    { key: "for-you", label: "For You", icon: "✨" },
-    { key: "new", label: "New", icon: "🆕" },
-    { key: "active", label: "Active", icon: "🟢" },
-    { key: "nearby", label: "Nearby", icon: "📍" },
-    { key: "online", label: "Online", icon: "💫" },
-];
+interface FiltersData {
+    interests: string[];
+    religions: string[];
+    occupations: string[];
+    educations: string[];
+    distanceOptions: { value: string; label: string }[];
+    ageRange: { min: number; max: number };
+    relationshipGoals: string[];
+}
 
-// ─── Swipe card component ─────────────────────────────────────────────────────
+const DEFAULT_FILTERS: FilterState = {
+    distance: "",
+    minAge: "",
+    maxAge: "",
+    gender: "",
+    lookingFor: "",
+    online: "",
+    recentlyActive: "",
+    verifiedOnly: "",
+    interests: [],
+    relationshipGoal: "",
+    religion: "",
+};
+
+// ─── Swipe Card Component ─────────────────────────────────────────────────────
 const SwipeCard = ({
     profile, swipeDir, onLike, onSuperLike, onPass, actionLoading, navigate, isOnline,
 }: {
@@ -45,24 +75,20 @@ const SwipeCard = ({
             {/* Photo area */}
             <div className="swipe-photo" onClick={() => navigate(`/profile/${profile._id}`)}>
                 {photos.length > 0 ? (
-                    <img src={photos[photoIdx]} alt={profile.firstName} />
+                    <img src={photos[photoIdx]} alt={profile.firstName} loading="lazy" />
                 ) : (
                     <div className="swipe-photo-placeholder">{initials}</div>
                 )}
 
-                {/* Photo dots — bar style */}
-                {photos.length > 1 && (
-                    <div className="photo-dots">
-                        {photos.map((_, i) => (
-                            <span key={i} className={`photo-dot ${i === photoIdx ? "active" : ""}`}
-                                onClick={e => { e.stopPropagation(); setPhotoIdx(i); }} />
-                        ))}
-                    </div>
-                )}
-
-                {/* Photo nav areas */}
+                {/* Photo navigation bars */}
                 {photos.length > 1 && (
                     <>
+                        <div className="photo-dots">
+                            {photos.map((_, i) => (
+                                <span key={i} className={`photo-dot ${i === photoIdx ? "active" : ""}`}
+                                    onClick={e => { e.stopPropagation(); setPhotoIdx(i); }} />
+                            ))}
+                        </div>
                         <div className="photo-prev" onClick={e => { e.stopPropagation(); setPhotoIdx(i => Math.max(0, i - 1)); }} />
                         <div className="photo-next" onClick={e => { e.stopPropagation(); setPhotoIdx(i => Math.min(photos.length - 1, i + 1)); }} />
                     </>
@@ -71,14 +97,15 @@ const SwipeCard = ({
                 {/* Badges */}
                 <div className="swipe-badges">
                     {profile.isVerified && <span className="badge-verified">✓ Verified</span>}
-                    {isOnline && <span className="badge-online">Online</span>}
-                    {profile.compatibilityScore && (
-                        <span className="badge-compat">{profile.compatibilityScore}%</span>
+                    {isOnline && <span className="badge-online">● Online</span>}
+                    {profile.compatibilityScore && profile.compatibilityScore > 0 && (
+                        <span className="badge-compat">{profile.compatibilityScore}% Match</span>
                     )}
                     {profile.isPremium && <span className="badge-premium">✨ Premium</span>}
+                    {profile.distance && <span className="badge-distance">{profile.distance} km</span>}
                 </div>
 
-                {/* LIKE / NOPE overlays */}
+                {/* Swipe stamps */}
                 {swipeDir === "right" && <div className="swipe-stamp stamp-like">LIKE</div>}
                 {swipeDir === "left" && <div className="swipe-stamp stamp-nope">NOPE</div>}
                 {swipeDir === "up" && <div className="swipe-stamp stamp-super">SUPER</div>}
@@ -88,13 +115,14 @@ const SwipeCard = ({
                     <div className="swipe-overlay-top">
                         <div className="swipe-name-age">
                             <h2>{profile.firstName}, {profile.age ?? "?"}</h2>
+                            {profile.isOnline && <span className="online-indicator-dot" />}
                         </div>
-                        {profile.distance && (
-                            <span className="swipe-distance">📍 {profile.distance}</span>
-                        )}
                     </div>
                     {(profile.city || profile.country) && (
-                        <p className="swipe-location">📍 {[profile.city, profile.country].filter(Boolean).join(", ")}</p>
+                        <p className="swipe-location">
+                            📍 {[profile.city, profile.country].filter(Boolean).join(", ")}
+                            {profile.distance && <span className="swipe-distance"> · {profile.distance} km</span>}
+                        </p>
                     )}
                     {profile.occupation && <p className="swipe-occupation">💼 {profile.occupation}</p>}
                 </div>
@@ -103,14 +131,14 @@ const SwipeCard = ({
             {/* Bio */}
             {profile.aboutMe && (
                 <div className="swipe-bio">
-                    <p>{profile.aboutMe.slice(0, 160)}{profile.aboutMe.length > 160 ? "…" : ""}</p>
+                    <p>"{profile.aboutMe.slice(0, 200)}{profile.aboutMe.length > 200 ? "…" : ""}"</p>
                 </div>
             )}
 
-            {/* Interests — modern chips */}
+            {/* Interests */}
             {profile.interests && profile.interests.length > 0 && (
                 <div className="swipe-interests">
-                    {profile.interests.slice(0, 6).map(i => (
+                    {profile.interests.slice(0, 8).map(i => (
                         <span key={i} className="swipe-tag">{i}</span>
                     ))}
                 </div>
@@ -120,10 +148,10 @@ const SwipeCard = ({
             <div className="swipe-details-row">
                 {profile.education && <span>🎓 {profile.education.replace("_", " ")}</span>}
                 {profile.religion && <span>🙏 {profile.religion}</span>}
-                {profile.relationshipGoal && <span>💞 {profile.relationshipGoal}</span>}
+                {profile.relationshipGoal && <span>💞 {profile.relationshipGoal.replace("_", " ")}</span>}
             </div>
 
-            {/* View profile */}
+            {/* View full profile */}
             <button className="swipe-view-btn" onClick={() => navigate(`/profile/${profile._id}`)}>
                 View Full Profile →
             </button>
@@ -149,7 +177,7 @@ const SwipeCard = ({
     );
 };
 
-// ─── Match modal ──────────────────────────────────────────────────────────────
+// ─── Match Modal ──────────────────────────────────────────────────────────────
 const MatchModal = ({ profile, onClose, onMessage }: {
     profile: Profile; onClose: () => void; onMessage: () => void;
 }) => {
@@ -178,39 +206,225 @@ const MatchModal = ({ profile, onClose, onMessage }: {
     );
 };
 
-// ─── Main Discover page ───────────────────────────────────────────────────────
+// ─── Filter Panel ─────────────────────────────────────────────────────────────
+const FilterPanel = ({
+    filters, setFilters, availableFilters, onApply, onClose,
+}: {
+    filters: FilterState;
+    setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
+    availableFilters: FiltersData | null;
+    onApply: () => void;
+    onClose: () => void;
+}) => {
+    const update = (key: keyof FilterState, value: any) => {
+        setFilters(prev => ({ ...prev, [key]: value }));
+    };
+
+    const toggleInterest = (interest: string) => {
+        setFilters(prev => ({
+            ...prev,
+            interests: prev.interests.includes(interest)
+                ? prev.interests.filter(i => i !== interest)
+                : [...prev.interests, interest],
+        }));
+    };
+
+    const clearAll = () => setFilters(DEFAULT_FILTERS);
+
+    return (
+        <div className="filter-overlay" onClick={onClose}>
+            <div className="filter-panel" onClick={e => e.stopPropagation()}>
+                <div className="filter-header">
+                    <h2>🔍 Filters</h2>
+                    <div className="filter-header-actions">
+                        <button className="filter-clear-btn" onClick={clearAll}>Clear All</button>
+                        <button className="filter-close-btn" onClick={onClose}>✕</button>
+                    </div>
+                </div>
+
+                <div className="filter-body">
+                    {/* Distance */}
+                    <div className="filter-group">
+                        <label>Distance</label>
+                        <select value={filters.distance} onChange={e => update("distance", e.target.value)}>
+                            <option value="">Anywhere</option>
+                            {(availableFilters?.distanceOptions || []).map(o => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Age Range */}
+                    <div className="filter-group">
+                        <label>Age Range</label>
+                        <div className="filter-range">
+                            <input type="number" placeholder="18" min={18} max={100}
+                                value={filters.minAge} onChange={e => update("minAge", e.target.value)} />
+                            <span>to</span>
+                            <input type="number" placeholder="100" min={18} max={100}
+                                value={filters.maxAge} onChange={e => update("maxAge", e.target.value)} />
+                        </div>
+                    </div>
+
+                    {/* Gender */}
+                    <div className="filter-group">
+                        <label>Gender</label>
+                        <select value={filters.gender} onChange={e => update("gender", e.target.value)}>
+                            <option value="">Any</option>
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+
+                    {/* Looking For */}
+                    <div className="filter-group">
+                        <label>Looking For</label>
+                        <select value={filters.lookingFor} onChange={e => update("lookingFor", e.target.value)}>
+                            <option value="">Any</option>
+                            <option value="men">Men</option>
+                            <option value="women">Women</option>
+                            <option value="both">Both</option>
+                        </select>
+                    </div>
+
+                    {/* Status filters */}
+                    <div className="filter-group">
+                        <label>Status</label>
+                        <div className="filter-checkboxes">
+                            <label className="filter-checkbox">
+                                <input type="checkbox" checked={filters.online === "true"}
+                                    onChange={e => update("online", e.target.checked ? "true" : "")} />
+                                Online now
+                            </label>
+                            <label className="filter-checkbox">
+                                <input type="checkbox" checked={filters.recentlyActive === "true"}
+                                    onChange={e => update("recentlyActive", e.target.checked ? "true" : "")} />
+                                Recently active
+                            </label>
+                            <label className="filter-checkbox">
+                                <input type="checkbox" checked={filters.verifiedOnly === "true"}
+                                    onChange={e => update("verifiedOnly", e.target.checked ? "true" : "")} />
+                                Verified only
+                            </label>
+                        </div>
+                    </div>
+
+                    {/* Relationship Goal */}
+                    <div className="filter-group">
+                        <label>Relationship Goal</label>
+                        <select value={filters.relationshipGoal} onChange={e => update("relationshipGoal", e.target.value)}>
+                            <option value="">Any</option>
+                            {(availableFilters?.relationshipGoals || []).map(g => (
+                                <option key={g} value={g}>{g.replace(/_/g, " ")}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Religion */}
+                    <div className="filter-group">
+                        <label>Religion</label>
+                        <select value={filters.religion} onChange={e => update("religion", e.target.value)}>
+                            <option value="">Any</option>
+                            {(availableFilters?.religions || []).map(r => (
+                                <option key={r} value={r}>{r}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Interests */}
+                    {availableFilters?.interests && availableFilters.interests.length > 0 && (
+                        <div className="filter-group">
+                            <label>Interests</label>
+                            <div className="filter-chips">
+                                {availableFilters.interests.map(i => (
+                                    <button key={i}
+                                        className={`filter-chip ${filters.interests.includes(i) ? "active" : ""}`}
+                                        onClick={() => toggleInterest(i)}>
+                                        {i}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="filter-footer">
+                    <button className="btn btn-primary btn-block" onClick={onApply}>Apply Filters</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ─── Main Discover Page ───────────────────────────────────────────────────────
 const Discover = () => {
     const navigate = useNavigate();
     const { onlineUsers } = useSocket();
-    const [tab, setTab] = useState<FeedTab>("for-you");
     const [profiles, setProfiles] = useState<Profile[]>([]);
-    const [index, setIndex] = useState(0);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setAL] = useState<string | null>(null);
     const [matchModal, setMatchModal] = useState<Profile | null>(null);
     const [swipeDir, setSwipeDir] = useState<string | null>(null);
-    const [newMatchBadge, setNewMatchBadge] = useState(false);
+    const [index, setIndex] = useState(0);
+    const [showFilters, setShowFilters] = useState(false);
+    const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+    const [activeFilters, setActiveFilters] = useState<FilterState>(DEFAULT_FILTERS);
+    const [availableFilters, setAvailableFilters] = useState<FiltersData | null>(null);
+    const [page, setPage] = useState(1);
+    const [hasMore, setHasMore] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
     const touchStart = useRef<{ x: number; y: number } | null>(null);
 
-    const loadTab = useCallback(async (t: FeedTab) => {
-        setLoading(true);
-        setIndex(0);
-        try {
-            let data: Profile[] = [];
-            if (t === "for-you") data = (await matchAPI.getSuggestions()).suggestions || [];
-            else if (t === "new") data = (await matchAPI.getRecentlyJoined()).users || [];
-            else if (t === "active") data = (await matchAPI.getRecentlyActive()).users || [];
-            else if (t === "nearby") data = (await matchAPI.getNearby()).users || [];
-            else if (t === "online") data = (await matchAPI.getOnline()).users || [];
-            setProfiles(data);
-        } catch {
-            setProfiles([]);
-        } finally {
-            setLoading(false);
-        }
+    // Active filter count
+    const activeFilterCount = Object.entries(activeFilters).filter(([k, v]) => {
+        if (k === "interests") return (v as string[]).length > 0;
+        return v !== "";
+    }).length;
+
+    // Load available filters on mount
+    useEffect(() => {
+        discoveryAPI.getFilters()
+            .then(res => setAvailableFilters(res.filters))
+            .catch(() => {});
     }, []);
 
-    useEffect(() => { loadTab(tab); }, [tab, loadTab]);
+    // Load profiles
+    const loadProfiles = useCallback(async (pageNum: number = 1, append: boolean = false) => {
+        if (pageNum === 1) setLoading(true);
+        else setLoadingMore(true);
+        try {
+            const f: Record<string, any> = { page: pageNum, limit: 20 };
+            Object.entries(activeFilters).forEach(([k, v]) => {
+                if (k === "interests" && (v as string[]).length > 0) f.interests = (v as string[]).join(",");
+                else if (v !== "") f[k] = v;
+            });
+            const res = await discoveryAPI.getUsers(f);
+            const users: Profile[] = res.users || [];
+            if (append) {
+                setProfiles(prev => [...prev, ...users]);
+            } else {
+                setProfiles(users);
+                setIndex(0);
+            }
+            setHasMore(users.length >= 20 && res.pagination?.page < res.pagination?.pages);
+        } catch {
+            if (!append) setProfiles([]);
+        } finally {
+            setLoading(false);
+            setLoadingMore(false);
+        }
+    }, [activeFilters]);
+
+    useEffect(() => {
+        setPage(1);
+        loadProfiles(1);
+    }, [loadProfiles]);
+
+    const applyFilters = () => {
+        setActiveFilters({ ...filters });
+        setShowFilters(false);
+    };
 
     const current = profiles[index];
 
@@ -221,13 +435,21 @@ const Discover = () => {
             const res = await action();
             if (res?.isMatch) {
                 setMatchModal(current);
-                setNewMatchBadge(true);
             }
         } catch { /* silent */ }
-        setTimeout(() => { setSwipeDir(null); setAL(null); setIndex(i => i + 1); }, 450);
+        setTimeout(() => {
+            setSwipeDir(null); setAL(null);
+            setIndex(i => i + 1);
+            // Load more when reaching end
+            if (index >= profiles.length - 3 && hasMore && !loadingMore) {
+                const nextPage = page + 1;
+                setPage(nextPage);
+                loadProfiles(nextPage, true);
+            }
+        }, 450);
     };
 
-    // Touch swipe support
+    // Touch swipe
     const onTouchStart = (e: React.TouchEvent) => {
         touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     };
@@ -237,34 +459,92 @@ const Discover = () => {
         const dy = e.changedTouches[0].clientY - touchStart.current.y;
         touchStart.current = null;
         if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
-            if (dx > 0) doAction("right", () => matchAPI.likeUser(current._id));
-            else doAction("left", () => matchAPI.passUser(current._id));
+            if (dx > 0) doAction("right", () => matchAPI.likeUser(current!._id));
+            else doAction("left", () => matchAPI.passUser(current!._id));
         } else if (dy < -80) {
-            doAction("up", () => matchAPI.superLikeUser(current._id));
+            doAction("up", () => matchAPI.superLikeUser(current!._id));
         }
     };
 
-    const initials = (p: Profile) => `${p.firstName?.[0] ?? ""}${p.lastName?.[0] ?? ""}`.toUpperCase();
+    // Keyboard support
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if (!current || actionLoading) return;
+            if (e.key === "ArrowRight") doAction("right", () => matchAPI.likeUser(current!._id));
+            if (e.key === "ArrowLeft") doAction("left", () => matchAPI.passUser(current!._id));
+            if (e.key === "ArrowUp") doAction("up", () => matchAPI.superLikeUser(current!._id));
+        };
+        window.addEventListener("keydown", handler);
+        return () => window.removeEventListener("keydown", handler);
+    }, [current, actionLoading]);
 
     return (
         <div className="page-wrapper">
             <AppNavbar />
 
             <div className="discover-page">
-                {/* Feed tabs */}
-                <div className="discover-tabs">
-                    {TABS.map(t => (
-                        <button key={t.key}
-                            className={`discover-tab ${tab === t.key ? "active" : ""}`}
-                            onClick={() => setTab(t.key)}>
-                            <span>{t.icon}</span>
-                            <span>{t.label}</span>
-                            {t.key === "online" && onlineUsers.size > 0 && (
-                                <span className="tab-online-count">{onlineUsers.size}</span>
-                            )}
+                {/* Header */}
+                <div className="discover-header">
+                    <h1>Discover</h1>
+                    <div className="discover-header-actions">
+                        {activeFilterCount > 0 && (
+                            <span className="active-filter-count">{activeFilterCount}</span>
+                        )}
+                        <button className={`filter-toggle-btn ${showFilters ? "active" : ""}`}
+                            onClick={() => setShowFilters(true)}>
+                            🔍 Filters
                         </button>
-                    ))}
+                        <button className="refresh-btn" onClick={() => { setPage(1); loadProfiles(1); }} disabled={loading}>
+                            🔄
+                        </button>
+                    </div>
                 </div>
+
+                {/* Active filter chips */}
+                {activeFilterCount > 0 && (
+                    <div className="active-filters-bar">
+                        {activeFilters.distance && (
+                            <span className="active-filter-chip" onClick={() => {
+                                setActiveFilters(prev => ({ ...prev, distance: "" }));
+                                setFilters(prev => ({ ...prev, distance: "" }));
+                            }}>
+                                📍 {activeFilters.distance} km ✕
+                            </span>
+                        )}
+                        {activeFilters.minAge && activeFilters.maxAge && (
+                            <span className="active-filter-chip" onClick={() => {
+                                setActiveFilters(prev => ({ ...prev, minAge: "", maxAge: "" }));
+                                setFilters(prev => ({ ...prev, minAge: "", maxAge: "" }));
+                            }}>
+                                🎂 {activeFilters.minAge}-{activeFilters.maxAge} ✕
+                            </span>
+                        )}
+                        {activeFilters.online === "true" && (
+                            <span className="active-filter-chip" onClick={() => {
+                                setActiveFilters(prev => ({ ...prev, online: "" }));
+                                setFilters(prev => ({ ...prev, online: "" }));
+                            }}>
+                                🟢 Online ✕
+                            </span>
+                        )}
+                        {activeFilters.verifiedOnly === "true" && (
+                            <span className="active-filter-chip" onClick={() => {
+                                setActiveFilters(prev => ({ ...prev, verifiedOnly: "" }));
+                                setFilters(prev => ({ ...prev, verifiedOnly: "" }));
+                            }}>
+                                ✓ Verified ✕
+                            </span>
+                        )}
+                        {activeFilters.interests.length > 0 && (
+                            <span className="active-filter-chip" onClick={() => {
+                                setActiveFilters(prev => ({ ...prev, interests: [] }));
+                                setFilters(prev => ({ ...prev, interests: [] }));
+                            }}>
+                                🎯 {activeFilters.interests.length} interests ✕
+                            </span>
+                        )}
+                    </div>
+                )}
 
                 {/* Main card area */}
                 <div className="discover-main"
@@ -278,54 +558,79 @@ const Discover = () => {
                         </div>
                     ) : !current ? (
                         <div className="empty-state discover-empty">
-                            <div className="empty-icon">
-                                {tab === "online" ? "😴" : tab === "nearby" ? "🗺️" : "💫"}
-                            </div>
-                            <h3>
-                                {tab === "online" ? "No one online right now"
-                                    : tab === "nearby" ? "No one nearby yet"
-                                        : "You've seen everyone!"}
-                            </h3>
+                            <div className="empty-icon">💫</div>
+                            <h3>You've seen everyone!</h3>
                             <p>
-                                {tab === "for-you"
-                                    ? "Check back later or update your preferences for better matches."
-                                    : "Try a different tab or check back soon."}
+                                {activeFilterCount > 0
+                                    ? "Try adjusting your filters to see more people."
+                                    : "Check back later or update your preferences for better matches."}
                             </p>
-                            <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap", justifyContent: "center" }}>
-                                <button className="btn btn-primary" onClick={() => loadTab(tab)}>Refresh</button>
-                                <button className="btn btn-outline" onClick={() => navigate("/profile/edit")}>Edit Preferences</button>
+                            <div className="empty-actions">
+                                {activeFilterCount > 0 && (
+                                    <button className="btn btn-primary" onClick={() => {
+                                        setActiveFilters(DEFAULT_FILTERS);
+                                        setFilters(DEFAULT_FILTERS);
+                                    }}>
+                                        Clear Filters
+                                    </button>
+                                )}
+                                <button className="btn btn-outline" onClick={() => { setPage(1); loadProfiles(1); }}>
+                                    🔄 Refresh
+                                </button>
+                                <button className="btn btn-outline" onClick={() => navigate("/profile/edit")}>
+                                    Edit Preferences
+                                </button>
                             </div>
                         </div>
                     ) : (
-                        <SwipeCard
-                            profile={current}
-                            swipeDir={swipeDir}
-                            isOnline={onlineUsers.has(current._id)}
-                            onLike={() => doAction("right", () => matchAPI.likeUser(current._id))}
-                            onSuperLike={() => doAction("up", () => matchAPI.superLikeUser(current._id))}
-                            onPass={() => doAction("left", () => matchAPI.passUser(current._id))}
-                            actionLoading={actionLoading}
-                            navigate={navigate}
-                        />
-                    )}
+                        <>
+                            <SwipeCard
+                                profile={current}
+                                swipeDir={swipeDir}
+                                isOnline={onlineUsers.has(current._id) || current.isOnline || false}
+                                onLike={() => doAction("right", () => matchAPI.likeUser(current._id))}
+                                onSuperLike={() => doAction("up", () => matchAPI.superLikeUser(current._id))}
+                                onPass={() => doAction("left", () => matchAPI.passUser(current._id))}
+                                actionLoading={actionLoading}
+                                navigate={navigate}
+                            />
 
-                    {/* Progress dots */}
-                    {!loading && profiles.length > 0 && (
-                        <div className="swipe-progress">
-                            {profiles.slice(0, Math.min(profiles.length, 8)).map((_, i) => (
-                                <span key={i} className={`progress-dot ${i === index ? "active" : i < index ? "done" : ""}`} />
-                            ))}
-                            {profiles.length > 8 && <span className="progress-more">+{profiles.length - 8}</span>}
-                        </div>
+                            {/* Progress dots */}
+                            <div className="swipe-progress">
+                                {profiles.slice(0, Math.min(profiles.length, 10)).map((_, i) => (
+                                    <span key={i} className={`progress-dot ${i === index ? "active" : i < index ? "done" : ""}`} />
+                                ))}
+                                {profiles.length > 10 && <span className="progress-more">+{profiles.length - 10}</span>}
+                            </div>
+
+                            {/* Load more indicator */}
+                            {loadingMore && (
+                                <div className="discover-loading-more">
+                                    <div className="discover-spinner" style={{ width: 24, height: 24 }} />
+                                    <p>Loading more…</p>
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
             </div>
+
+            {/* Filter panel */}
+            {showFilters && (
+                <FilterPanel
+                    filters={filters}
+                    setFilters={setFilters}
+                    availableFilters={availableFilters}
+                    onApply={applyFilters}
+                    onClose={() => setShowFilters(false)}
+                />
+            )}
 
             {/* Match modal */}
             {matchModal && (
                 <MatchModal
                     profile={matchModal}
-                    onClose={() => { setMatchModal(null); setNewMatchBadge(false); }}
+                    onClose={() => { setMatchModal(null); }}
                     onMessage={() => { setMatchModal(null); navigate(`/chat/${matchModal._id}`); }}
                 />
             )}

@@ -208,7 +208,7 @@ const Dashboard = () => {
                                 { icon: "💞", val: stats.matches, label: "Matches", to: "/matches", color: "#ff1744" },
                                 { icon: "💬", val: stats.unreadMessages, label: "Unread", to: "/chat", color: "#9c27b0", badge: stats.unreadMessages > 0 },
                                 { icon: "🔔", val: stats.unreadNotifications, label: "Alerts", to: "/notifications", color: "#673ab7", badge: stats.unreadNotifications > 0 },
-                                { icon: "🌍", val: stats.memberCount > 999 ? `${Math.floor(stats.memberCount / 1000)}K+` : stats.memberCount || "—", label: "Members", to: "/discover", color: "#10b981" },
+                                { icon: "🏆", val: user?.isPremium ? "✨" : "💎", label: user?.isPremium ? "Premium" : "Upgrade", to: "/premium", color: "#ff6f00" },
                             ].map((s, i) => (
                                 <Link key={i} to={s.to} className="db-stat-card" style={{ "--stat-color": s.color } as any}>
                                     <div className="db-stat-icon">{s.icon}</div>
