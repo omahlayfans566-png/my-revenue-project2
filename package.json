@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "framer-motion": "^12.42.2",
-    "react-hot-toast": "^2.6.0"
-  }
-}
