@@ -258,6 +258,44 @@ export const paymentAPI = {
 };
 
 // ============================================
+// PREMIUM ENDPOINTS (Paystack)
+// ============================================
+
+export const premiumAPI = {
+    getPricing: async () => apiCall("/premium/pricing"),
+
+    initializePaystack: async (plan: string, durationDays: number = 30) =>
+        apiCall("/premium/initialize-paystack", {
+            method: "POST",
+            body: JSON.stringify({ plan, durationDays }),
+        }),
+
+    verifyPaystack: async (reference: string, plan: string, durationDays: number = 30, trxref?: string) =>
+        apiCall("/premium/verify-paystack", {
+            method: "POST",
+            body: JSON.stringify({ reference, plan, durationDays, trxref }),
+        }),
+
+    getStatus: async () => apiCall("/premium/status"),
+
+    cancel: async () =>
+        apiCall("/premium/cancel", { method: "POST" }),
+
+    getHistory: async () => apiCall("/premium/history"),
+};
+
+// ============================================
+// SEARCH ENDPOINTS
+// ============================================
+
+export const searchAPI = {
+    search: async (q: string, page: number = 1, limit: number = 20) => {
+        const params = new URLSearchParams({ q, page: String(page), limit: String(limit) });
+        return apiCall(`/search?${params.toString()}`);
+    },
+};
+
+// ============================================
 // NOTIFICATION ENDPOINTS
 // ============================================
 

@@ -25,6 +25,7 @@ export interface AuthUser {
     profilePicture?: string;
     isPremium?: boolean;
     premiumTier?: string;
+    premiumExpires?: string;
     isMember?: boolean;
     isActive?: boolean;
     role?: string;

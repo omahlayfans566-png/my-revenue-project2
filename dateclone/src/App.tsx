@@ -1,89 +1,272 @@
+import React, { lazy, Suspense, type ReactNode, type ErrorInfo } from "react";
 import { Route, Routes, Navigate } from "react-router-dom";
+import { Toaster } from "react-hot-toast";
 import "./App.css";
 
-// Public pages
-import Home from "./pages/Home";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import About from "./pages/About";
-import Contact from "./pages/Contact";
-import FAQ from "./pages/FAQ";
-import Terms from "./pages/Terms";
-import Privacy from "./pages/Privacy";
-import Premium from "./pages/Premium";
+// Lazy load pages for code splitting
+const Home = lazy(() => import("./pages/Home"));
+const Login = lazy(() => import("./pages/Login"));
+const Register = lazy(() => import("./pages/Register"));
+const About = lazy(() => import("./pages/About"));
+const Contact = lazy(() => import("./pages/Contact"));
+const FAQ = lazy(() => import("./pages/FAQ"));
+const Terms = lazy(() => import("./pages/Terms"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Premium = lazy(() => import("./pages/Premium"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Discover = lazy(() => import("./pages/Discover"));
+const Matches = lazy(() => import("./pages/Matches"));
+const Chat = lazy(() => import("./pages/Chat"));
+const Notifications = lazy(() => import("./pages/Notifications"));
+const Profile = lazy(() => import("./pages/Profile"));
+const EditProfile = lazy(() => import("./pages/EditProfile"));
+const Settings = lazy(() => import("./pages/Settings"));
+const ProfileWizard = lazy(() => import("./component/ProfileWizard"));
+const ViewProfile = lazy(() => import("./pages/ViewProfile"));
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 
-// Authenticated pages
-import Dashboard from "./pages/Dashboard";
-import Discover from "./pages/Discover";
-import Matches from "./pages/Matches";
-import Chat from "./pages/Chat";
-import Notifications from "./pages/Notifications";
-import Profile from "./pages/Profile";
-import EditProfile from "./pages/EditProfile";
-import Settings from "./pages/Settings";
-import ProfileWizard from "./component/ProfileWizard";
-import ViewProfile from "./pages/ViewProfile";
-import AdminDashboard from "./pages/AdminDashboard";
-
-// Auth context & guard
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { SocketProvider } from "./context/SocketContext";
 
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+// ─── Loading Fallback ──────────────────────────────────────────────────────────
+const PageLoader = () => (
+  <div className="page-loader">
+    <div className="page-loader-spinner">
+      <div className="spinner-ring" />
+      <div className="spinner-ring spinner-ring-2" />
+    </div>
+    <p className="page-loader-text">Loading…</p>
+  </div>
+);
+
+// ─── Error Boundary ────────────────────────────────────────────────────────────
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends React.Component<
+  { children: ReactNode; fallback?: ReactNode },
+  ErrorBoundaryState
+> {
+  constructor(props: { children: ReactNode; fallback?: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("[ErrorBoundary]", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        this.props.fallback || (
+          <div className="error-boundary">
+            <div className="error-boundary-content">
+              <span className="error-boundary-icon">⚠️</span>
+              <h2>Something went wrong</h2>
+              <p>{this.state.error?.message || "An unexpected error occurred."}</p>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  this.setState({ hasError: false, error: null });
+                  window.location.reload();
+                }}
+              >
+                Reload Page
+              </button>
+            </div>
+          </div>
+        )
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ─── Route Guards ──────────────────────────────────────────────────────────────
+const ProtectedRoute = ({ children }: { children: ReactNode }) => {
   const { isAuthenticated, loading } = useAuth();
-  if (loading) return <div className="app-loading">💕</div>;
+  if (loading) return <PageLoader />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   return <>{children}</>;
 };
 
-const PublicOnlyRoute = ({ children }: { children: React.ReactNode }) => {
+const PublicOnlyRoute = ({ children }: { children: ReactNode }) => {
   const { isAuthenticated, loading } = useAuth();
-  if (loading) return <div className="app-loading">💕</div>;
+  if (loading) return <PageLoader />;
   return !isAuthenticated ? <>{children}</> : <Navigate to="/dashboard" replace />;
 };
 
+// ─── Routes ────────────────────────────────────────────────────────────────────
 function AppRoutes() {
   return (
-    <Routes>
-      {/* Public routes */}
-      <Route path="/" element={<Home />} />
-      <Route path="/about" element={<About />} />
-      <Route path="/contact" element={<Contact />} />
-      <Route path="/faq" element={<FAQ />} />
-      <Route path="/terms" element={<Terms />} />
-      <Route path="/privacy" element={<Privacy />} />
-      <Route path="/premium" element={<Premium />} />
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        {/* Public routes */}
+        <Route path="/" element={<Home />} />
+        <Route path="/about" element={<About />} />
+        <Route path="/contact" element={<Contact />} />
+        <Route path="/faq" element={<FAQ />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/premium" element={<Premium />} />
 
-      {/* Public-only */}
-      <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
-      <Route path="/register" element={<PublicOnlyRoute><Register /></PublicOnlyRoute>} />
+        {/* Public-only */}
+        <Route
+          path="/login"
+          element={
+            <PublicOnlyRoute>
+              <Login />
+            </PublicOnlyRoute>
+          }
+        />
+        <Route
+          path="/register"
+          element={
+            <PublicOnlyRoute>
+              <Register />
+            </PublicOnlyRoute>
+          }
+        />
 
-      {/* Protected */}
-      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-      <Route path="/discover" element={<ProtectedRoute><Discover /></ProtectedRoute>} />
-      <Route path="/matches" element={<ProtectedRoute><Matches /></ProtectedRoute>} />
-      <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
-      <Route path="/chat/:userId" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
-      <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
-      <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-      <Route path="/profile/edit" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
-      <Route path="/profile/:userId" element={<ProtectedRoute><ViewProfile /></ProtectedRoute>} />
-      <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-      <Route path="/wizard" element={<ProtectedRoute><ProfileWizard /></ProtectedRoute>} />
-      <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+        {/* Protected */}
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/discover"
+          element={
+            <ProtectedRoute>
+              <Discover />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/matches"
+          element={
+            <ProtectedRoute>
+              <Matches />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/chat"
+          element={
+            <ProtectedRoute>
+              <Chat />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/chat/:userId"
+          element={
+            <ProtectedRoute>
+              <Chat />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/notifications"
+          element={
+            <ProtectedRoute>
+              <Notifications />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <Profile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile/edit"
+          element={
+            <ProtectedRoute>
+              <EditProfile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile/:userId"
+          element={
+            <ProtectedRoute>
+              <ViewProfile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <Settings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/wizard"
+          element={
+            <ProtectedRoute>
+              <ProfileWizard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute>
+              <AdminDashboard />
+            </ProtectedRoute>
+          }
+        />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
 
+// ─── App ───────────────────────────────────────────────────────────────────────
 function App() {
   return (
-    <AuthProvider>
-      <SocketProvider>
-        <AppRoutes />
-      </SocketProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <SocketProvider>
+          <Toaster
+            position="top-center"
+            toastOptions={{
+              duration: 3000,
+              style: {
+                borderRadius: "12px",
+                background: "#1a1a2e",
+                color: "#fff",
+                border: "1px solid rgba(255,255,255,0.1)",
+              },
+              success: {
+                iconTheme: { primary: "#ff4081", secondary: "#fff" },
+              },
+              error: {
+                iconTheme: { primary: "#ff1744", secondary: "#fff" },
+              },
+            }}
+          />
+          <AppRoutes />
+        </SocketProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

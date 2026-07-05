@@ -14,10 +14,12 @@ import authRoutes from "./routes/authRoutes.js";
 import profileRoutes from "./routes/profileRoutes.js";
 import matchRoutes from "./routes/matchRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
+import premiumRoutes from "./routes/premiumRoutes.js";
 import messageRoutes from "./routes/messageRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import discoveryRoutes from "./routes/discoveryRoutes.js";
+import searchRoutes from "./routes/searchRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { verifyEmailService } from "./services/emailService.js";
 import { requestLogger } from "./middleware/requestLogger.js";
@@ -129,10 +131,12 @@ app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/matches", matchRoutes);
 app.use("/api/payment", paymentRoutes);
+app.use("/api/premium", premiumRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/discover", discoveryRoutes);
+app.use("/api/search", searchRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {

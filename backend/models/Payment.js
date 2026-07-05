@@ -6,32 +6,50 @@ const paymentSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             required: true,
+            index: true,
         },
-        stripePaymentIntentId: String,
-        transactionId: { type: String, unique: true },
-        tier: {
-            type: String,
-            enum: ["gold", "platinum"],
-            required: true,
+        subscriptionId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Subscription",
         },
         amount: { type: Number, required: true },
-        currency: { type: String, default: "USD" },
-        durationMonths: { type: Number, default: 1 },
+        currency: { type: String, default: "NGN" },
         status: {
             type: String,
-            enum: ["pending", "completed", "failed", "refunded"],
+            enum: ["pending", "success", "failed", "refunded"],
             default: "pending",
         },
         paymentMethod: {
             type: String,
-            enum: ["credit_card", "debit_card", "mobile_money"],
+            enum: ["paystack", "stripe", "admin"],
+            required: true,
         },
-        validFrom: Date,
-        validUntil: Date,
-        autoRenew: { type: Boolean, default: true },
+        // Paystack
+        paystackReference: { type: String, unique: true, sparse: true },
+        paystackAccessCode: String,
+        paystackTransactionData: mongoose.Schema.Types.Mixed,
+        // Stripe
+        stripePaymentIntentId: String,
+        stripeChargeId: String,
+        // Plan details
+        plan: {
+            type: String,
+            enum: ["basic", "gold", "platinum"],
+        },
+        durationDays: { type: Number, default: 30 },
+        // Admin
+        processedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        notes: String,
+        // Refund
+        refundedAt: Date,
         refundReason: String,
     },
     { timestamps: true }
 );
+
+// Indexes
+paymentSchema.index({ userId: 1, createdAt: -1 });
+paymentSchema.index({ paystackReference: 1 }, { unique: true, sparse: true });
+paymentSchema.index({ status: 1, createdAt: -1 });
 
 export const Payment = mongoose.model("Payment", paymentSchema);
