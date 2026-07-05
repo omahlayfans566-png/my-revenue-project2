@@ -50,7 +50,7 @@ const AppNavbar = ({ unreadMessages = 0 }: { unreadMessages?: number }) => {
                 </Link>
 
                 {/* Desktop nav links */}
-                {user?.isAdmin && (
+                {(user?.isAdmin || (user as any)?.role === "admin" || (user as any)?.role === "super_admin" || (user as any)?.role === "moderator") && (
                     <Link to="/admin" className="admin-nav-link">
                         🛡️ Admin
                     </Link>
@@ -135,6 +135,9 @@ const AppNavbar = ({ unreadMessages = 0 }: { unreadMessages?: number }) => {
             {/* Mobile menu */}
             {menuOpen && (
                 <div className="app-mobile-menu">
+                    {(user?.isAdmin || (user as any)?.role === "admin" || (user as any)?.role === "super_admin" || (user as any)?.role === "moderator") && (
+                        <Link to="/admin" onClick={() => setMenuOpen(false)}>🛡️ Admin</Link>
+                    )}
                     <Link to="/dashboard" onClick={() => setMenuOpen(false)}>🏠 Dashboard</Link>
                     <Link to="/discover" onClick={() => setMenuOpen(false)}>🔥 Discover</Link>
                     <Link to="/matches" onClick={() => setMenuOpen(false)}>💞 Matches</Link>

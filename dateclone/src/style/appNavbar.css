@@ -33,6 +33,28 @@
     font-size: 1.1rem;
 }
 
+/* Admin nav link */
+.admin-nav-link {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 16px;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #ff1744;
+    background: rgba(255, 23, 68, 0.08);
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.admin-nav-link:hover {
+    background: rgba(255, 23, 68, 0.15);
+    color: #d50000;
+}
+
 /* Desktop links */
 .app-nav-links {
     display: flex;
