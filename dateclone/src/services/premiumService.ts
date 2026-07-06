@@ -17,6 +17,7 @@ export interface PremiumPlan {
   features: string[];
   color: string;
   popular?: boolean;
+  monthlyEquivalent?: number;
 }
 
 export const PREMIUM_PLANS: PremiumPlan[] = [
@@ -67,6 +68,64 @@ export const PREMIUM_PLANS: PremiumPlan[] = [
       "See profile visitors",
       "Message before matching",
       "24/7 Priority support",
+    ],
+  },
+];
+
+export const YEARLY_PLANS: PremiumPlan[] = [
+  {
+    id: "basic",
+    name: "Basic Yearly",
+    price: 23990,
+    priceUSD: 29.99,
+    durationDays: 365,
+    color: "#ff4081",
+    monthlyEquivalent: 1999,
+    features: [
+      "Unlimited likes",
+      "See who liked you",
+      "Undo swipe",
+      "5 Super Likes per day",
+      "Remove ads",
+      "Save 33% vs monthly",
+    ],
+  },
+  {
+    id: "gold",
+    name: "Gold Yearly",
+    price: 47990,
+    priceUSD: 59.99,
+    durationDays: 365,
+    color: "#ffd700",
+    popular: true,
+    monthlyEquivalent: 3999,
+    features: [
+      "Everything in Basic",
+      "Advanced filters",
+      "Incognito mode",
+      "Read receipts",
+      "10 Super Likes per day",
+      "Profile Boost once a week",
+      "Save 33% vs monthly",
+    ],
+  },
+  {
+    id: "platinum",
+    name: "Platinum Yearly",
+    price: 79990,
+    priceUSD: 99.99,
+    durationDays: 365,
+    color: "#e040fb",
+    monthlyEquivalent: 6666,
+    features: [
+      "Everything in Gold",
+      "Priority ranking",
+      "Unlimited Super Likes",
+      "Passport mode (any location)",
+      "See profile visitors",
+      "Message before matching",
+      "24/7 Priority support",
+      "Save 33% vs monthly",
     ],
   },
 ];
@@ -171,6 +230,7 @@ export interface PaystackConfig {
     userId: string;
     tier: PremiumTier;
     durationDays: number;
+    isYearly?: boolean;
   };
   callback: (response: { reference: string; status: string }) => void;
   onClose: () => void;
@@ -197,6 +257,7 @@ export const initializePaystackPayment = (config: PaystackConfig): void => {
 
 export default {
   PREMIUM_PLANS,
+  YEARLY_PLANS,
   FREE_LIMITS,
   hasPremiumFeature,
   usePremium,

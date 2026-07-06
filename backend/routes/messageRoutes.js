@@ -90,11 +90,19 @@ router.post("/send", authenticateToken, async (req, res) => {
             referenceModel: "Message",
             icon: "💬",
             metadata: { fromUserId: userId, conversationId: userId },
-        }).catch(() => {});
+        }).catch(() => { });
 
         // Emit real-time notification
         if (global.io) {
             global.io.to(`user:${toUserId}`).emit("new_message", message);
+        }
+
+        // Mark as delivered if recipient is online
+        const recipientOnline = global.onlineUsers?.has(toUserId);
+        if (recipientOnline) {
+            message.isDelivered = true;
+            message.deliveredAt = new Date();
+            await message.save();
         }
 
         const populated = await Message.findById(message._id)
@@ -218,13 +226,19 @@ router.get("/conversation/:otherUserId", authenticateToken, async (req, res) => 
         const skip = (page - 1) * limit;
 
         const messages = await Message.find({
-            $or: [
-                { fromUserId: userId, toUserId: otherUserId },
-                { fromUserId: otherUserId, toUserId: userId },
-            ],
-            $or: [
-                { isDeleted: false },
-                { deletedFor: { $nin: [userId] } },
+            $and: [
+                {
+                    $or: [
+                        { fromUserId: userId, toUserId: otherUserId },
+                        { fromUserId: otherUserId, toUserId: userId },
+                    ],
+                },
+                {
+                    $or: [
+                        { isDeleted: false },
+                        { deletedFor: { $nin: [userId] } },
+                    ],
+                },
             ],
         })
             .sort({ createdAt: -1 })

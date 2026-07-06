@@ -103,6 +103,7 @@ const userSchema = new mongoose.Schema(
         deletedAt: Date,
         deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
         lastLogin: Date,
+        lastSeen: Date,
 
         // ── Profile completion score (0-100) ──────────────────────────────────
         profileCompletion: { type: Number, default: 0 },
@@ -115,6 +116,16 @@ const userSchema = new mongoose.Schema(
         premiumTier: { type: String, enum: ["basic", "gold", "platinum"], default: "basic" },
         premiumExpires: Date,
         stripeCustomerId: String,
+        boostExpires: Date,
+
+        // ── Passport (change location) ──────────────────────────────────────
+        passportLocation: {
+            latitude: Number,
+            longitude: Number,
+            city: String,
+            country: String,
+            enabled: { type: Boolean, default: false },
+        },
 
         // ── Moderation ───────────────────────────────────────────────────────
         reportCount: { type: Number, default: 0 },

@@ -12,7 +12,7 @@ interface Msg {
     fromUserId: { _id: string; firstName: string; profilePicture?: string } | string;
     toUserId: { _id: string } | string;
     content: string; image?: string;
-    createdAt: string; isRead: boolean;
+    createdAt: string; isRead: boolean; isDelivered?: boolean;
     pending?: boolean;
 }
 interface Conv {
@@ -27,7 +27,7 @@ const Chat = () => {
     const { userId: paramId } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
-    const { socket, connected, onlineUsers, sendMessage, startTyping, stopTyping, markRead } = useSocket();
+    const { socket, connected, onlineUsers, lastSeen, deliveredMessages, unreadMessageCount, sendMessage, startTyping, stopTyping, markRead } = useSocket();
 
     const [convs, setConvs] = useState<Conv[]>([]);
     const [activeConv, setActiveConv] = useState<Conv | null>(null);
@@ -101,8 +101,21 @@ const Chat = () => {
             });
         };
 
-        const onRead = ({ readBy }: { readBy: string }) => {
-            setMessages(prev => prev.map(m => ({ ...m, isRead: true })));
+        const onRead = ({ readBy, readAt }: { readBy: string; readAt?: string }) => {
+            setMessages(prev => prev.map(m => {
+                const mFromId = typeof m.fromUserId === "string" ? m.fromUserId : (m.fromUserId as any)._id;
+                // Only mark messages sent TO us as read
+                if (mFromId !== readBy) return { ...m, isRead: true };
+                return m;
+            }));
+        };
+
+        const onDelivered = ({ toUserId, deliveredAt }: { toUserId: string; deliveredAt: string }) => {
+            setMessages(prev => prev.map(m => {
+                const mToId = typeof m.toUserId === "string" ? m.toUserId : (m.toUserId as any)._id;
+                if (mToId === toUserId) return { ...m, isDelivered: true };
+                return m;
+            }));
         };
 
         const onNewMatch = ({ with: withId }: { with: string }) => {
@@ -113,6 +126,7 @@ const Chat = () => {
         socket.on("message_sent", onSent);
         socket.on("typing", onTyping);
         socket.on("messages_read_by", onRead);
+        socket.on("messages_delivered", onDelivered);
         socket.on("new_match", onNewMatch);
 
         return () => {
@@ -120,6 +134,7 @@ const Chat = () => {
             socket.off("message_sent", onSent);
             socket.off("typing", onTyping);
             socket.off("messages_read_by", onRead);
+            socket.off("messages_delivered", onDelivered);
             socket.off("new_match", onNewMatch);
         };
     }, [socket, markRead, loadConvs]);
@@ -216,6 +231,13 @@ typingTimer.current = setTimeout(() => {
     };
     const initials = (u: Conv["user"]) => `${u.firstName?.[0] ?? ""}${u.lastName?.[0] ?? ""}`.toUpperCase();
     const isOnline = (uid: string) => onlineUsers.has(uid);
+    const getLastSeen = (uid: string) => lastSeen.get(uid) || null;
+    const getMsgStatus = (msg: Msg) => {
+        if (msg.pending) return { icon: "⏳", label: "Sending..." };
+        if (msg.isRead) return { icon: "✓✓", label: "Read" };
+        if (msg.isDelivered || deliveredMessages.has(fromId(msg))) return { icon: "✓✓", label: "Delivered" };
+        return { icon: "✓", label: "Sent" };
+    };
     const fromId = (msg: Msg) => typeof msg.fromUserId === "string" ? msg.fromUserId : (msg.fromUserId as any)._id;
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -299,7 +321,11 @@ typingTimer.current = setTimeout(() => {
                                 <div className="chat-panel-info" onClick={() => navigate(`/profile/${activeConv.user._id}`)}>
                                     <h3>{activeConv.user.firstName} {activeConv.user.lastName}</h3>
                                     <span className={isOnline(activeConv.user._id) ? "chat-status online" : "chat-status"}>
-                                        {isOnline(activeConv.user._id) ? "● Online" : "● Offline"}
+                                        {isOnline(activeConv.user._id)
+                                            ? "● Online"
+                                            : getLastSeen(activeConv.user._id)
+                                                ? `Last seen ${fmtTime(getLastSeen(activeConv.user._id)!)}`
+                                                : "● Offline"}
                                     </span>
                                 </div>
                                 <div className="chat-header-actions">
@@ -324,6 +350,7 @@ typingTimer.current = setTimeout(() => {
                                         const isMe = fromId(msg) === user?._id;
                                         const prev = i > 0 ? messages[i - 1] : null;
                                         const showDate = !prev || fmtDate(msg.createdAt) !== fmtDate(prev.createdAt);
+                                        const status = getMsgStatus(msg);
 
                                         return (
                                             <div key={msg._id}>
@@ -354,8 +381,8 @@ typingTimer.current = setTimeout(() => {
                                                         <div className={`msg-meta ${isMe ? "meta-right" : "meta-left"}`}>
                                                             <span className="msg-time">{fmtTime(msg.createdAt)}</span>
                                                             {isMe && (
-                                                                <span className="msg-status">
-                                                                    {msg.pending ? "⏳" : msg.isRead ? "✓✓" : "✓"}
+                                                                <span className="msg-status" title={status.label}>
+                                                                    {status.icon}
                                                                 </span>
                                                             )}
                                                         </div>

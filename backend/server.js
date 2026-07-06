@@ -23,6 +23,8 @@ import searchRoutes from "./routes/searchRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { verifyEmailService } from "./services/emailService.js";
 import { requestLogger } from "./middleware/requestLogger.js";
+import { User } from "./models/User.js";
+import { Message } from "./models/Message.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -30,9 +32,6 @@ const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
-// IMPORTANT: Read ALLOWED_ORIGINS inside the callback, not at module load.
-// On Render, process.env.FRONTEND_URL may not be available at module parse time
-// depending on the platform's env injection order.
 const getAllowedOrigins = () => [
     "http://localhost:5173",
     "http://localhost:5174",
@@ -43,38 +42,42 @@ const getAllowedOrigins = () => [
 
 const corsOptions = {
     origin: (origin, cb) => {
-        // Allow server-to-server requests (no Origin header)
         if (!origin) return cb(null, true);
-
         const allowed = getAllowedOrigins();
-
-        // Allow any localhost origin in development
         if (process.env.NODE_ENV !== "production" && origin.startsWith("http://localhost")) {
             return cb(null, true);
         }
-
         if (allowed.includes(origin)) {
             return cb(null, true);
         }
-
-        // Return cb(null, false) — NOT cb(new Error(...))
-        // Throwing an error causes Express to return 500, which breaks the preflight.
-        // Returning false sends no CORS headers, which correctly blocks the request.
         console.warn(`[CORS] Blocked origin: ${origin} | Allowed: ${allowed.join(", ")}`);
         return cb(null, false);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    optionsSuccessStatus: 204,   // some legacy browsers choke on 204, but Render needs this
+    optionsSuccessStatus: 204,
 };
 
 // ── Socket.io ─────────────────────────────────────────────────────────────────
-const io = new Server(server, { cors: corsOptions, pingTimeout: 60000, pingInterval: 25000 });
-const onlineUsers = new Map();
+const io = new Server(server, {
+    cors: corsOptions,
+    pingTimeout: 30000,
+    pingInterval: 15000,
+    // Exponential backoff for reconnection
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 30000,
+    randomizationFactor: 0.5,
+});
+const onlineUsers = new Map();       // userId → socketId
+const userSockets = new Map();       // userId → Set<socketId> (multi-device)
+const userTypingStatus = new Map();  // userId → { toUserId, timer }
 global.io = io;
 global.onlineUsers = onlineUsers;
 
+// ── Socket authentication middleware ──────────────────────────────────────────
 io.use((socket, next) => {
     const token = socket.handshake.auth?.token;
     if (!token) return next(new Error("Authentication required"));
@@ -85,31 +88,258 @@ io.use((socket, next) => {
     } catch { next(new Error("Invalid token")); }
 });
 
+// ── Track typing sessions for cleanup ─────────────────────────────────────────
+const activeTypingSessions = new Map(); // socketId → { toUserId, timer }
+
+// ── Mark messages as delivered for a user ──────────────────────────────────────
+const markMessagesDelivered = async (userId) => {
+    try {
+        const result = await Message.updateMany(
+            { toUserId: userId, isDelivered: false, isDeleted: false },
+            { isDelivered: true, deliveredAt: new Date() }
+        );
+        if (result.modifiedCount > 0) {
+            console.log(`[Socket] Marked ${result.modifiedCount} messages as delivered for user ${userId}`);
+        }
+    } catch (err) {
+        console.error("[Socket] Failed to mark messages as delivered:", err.message);
+    }
+};
+
+// ── Get unread message count for a user ────────────────────────────────────────
+const getUnreadMessageCount = async (userId) => {
+    try {
+        return await Message.countDocuments({
+            toUserId: userId,
+            isRead: false,
+            isDeleted: false,
+        });
+    } catch {
+        return 0;
+    }
+};
+
+// ── Update lastSeen for a user ─────────────────────────────────────────────────
+const updateLastSeen = async (userId) => {
+    try {
+        await User.findByIdAndUpdate(userId, { lastSeen: new Date() });
+    } catch (err) {
+        console.error("[Socket] Failed to update lastSeen:", err.message);
+    }
+};
+
+// ── Socket connection handler ──────────────────────────────────────────────────
 io.on("connection", (socket) => {
-    socket.on("user_online", ({ userId }) => {
-        if (!userId || userId !== socket.userId) return;
-        onlineUsers.set(userId, socket.id);
-        socket.join(`user:${userId}`);
-        io.emit("user_status", { userId, online: true });
+    const userId = socket.userId;
+    console.log(`[Socket] User connected: ${userId} (socket: ${socket.id})`);
+
+    // Track multi-device connections
+    if (!userSockets.has(userId)) {
+        userSockets.set(userId, new Set());
+    }
+    userSockets.get(userId).add(socket.id);
+
+    // ── user_online ────────────────────────────────────────────────────────────
+    socket.on("user_online", async ({ userId: uid }) => {
+        if (!uid || uid !== socket.userId) return;
+        onlineUsers.set(uid, socket.id);
+        socket.join(`user:${uid}`);
+        io.emit("user_status", { userId: uid, online: true });
+
+        // Mark messages as delivered when user comes online
+        await markMessagesDelivered(uid);
+
+        // Emit delivered status to sender sockets
+        try {
+            const deliveredMessages = await Message.find({
+                toUserId: uid,
+                isDelivered: true,
+                deliveredAt: { $gte: new Date(Date.now() - 60000) }, // last 60 seconds
+            }).select("fromUserId").lean();
+
+            const notifiedSenders = new Set();
+            for (const msg of deliveredMessages) {
+                const senderId = msg.fromUserId.toString();
+                if (!notifiedSenders.has(senderId)) {
+                    notifiedSenders.add(senderId);
+                    io.to(`user:${senderId}`).emit("messages_delivered", {
+                        toUserId: uid,
+                        deliveredAt: new Date().toISOString(),
+                    });
+                }
+            }
+        } catch { /* silent */ }
+
+        // Emit unread count
+        const unreadCount = await getUnreadMessageCount(uid);
+        io.to(`user:${uid}`).emit("unread_message_count", { count: unreadCount });
     });
-    socket.on("send_message", ({ toUserId, content, image, tempId }) => {
+
+    // ── send_message ───────────────────────────────────────────────────────────
+    socket.on("send_message", async ({ toUserId, content, image, tempId }) => {
         if (!socket.userId || !toUserId) return;
-        const msg = { fromUserId: socket.userId, toUserId, content: content || "", image: image || null, tempId, createdAt: new Date().toISOString(), isRead: false };
-        io.to(`user:${toUserId}`).emit("new_message", msg);
-        socket.emit("message_sent", { tempId, createdAt: msg.createdAt });
+        try {
+            const recipientOnline = onlineUsers.has(toUserId);
+            const msg = {
+                fromUserId: socket.userId,
+                toUserId,
+                content: content || "",
+                image: image || null,
+                tempId,
+                createdAt: new Date().toISOString(),
+                isRead: false,
+                isDelivered: recipientOnline,
+            };
+
+            // Emit to recipient
+            io.to(`user:${toUserId}`).emit("new_message", msg);
+
+            // Emit delivery confirmation if online
+            if (recipientOnline) {
+                io.to(`user:${socket.userId}`).emit("messages_delivered", {
+                    toUserId,
+                    deliveredAt: new Date().toISOString(),
+                });
+            }
+
+            socket.emit("message_sent", { tempId, createdAt: msg.createdAt });
+
+            // Update unread count for recipient
+            const unreadCount = await getUnreadMessageCount(toUserId);
+            io.to(`user:${toUserId}`).emit("unread_message_count", { count: unreadCount + 1 });
+        } catch (err) {
+            console.error("[Socket] send_message error:", err.message);
+            socket.emit("message_error", { tempId, error: "Failed to send message" });
+        }
     });
-    socket.on("typing_start", ({ toUserId }) => { if (socket.userId) io.to(`user:${toUserId}`).emit("typing", { fromUserId: socket.userId, typing: true }); });
-    socket.on("typing_stop", ({ toUserId }) => { if (socket.userId) io.to(`user:${toUserId}`).emit("typing", { fromUserId: socket.userId, typing: false }); });
-    socket.on("messages_read", ({ fromUserId }) => { if (socket.userId) io.to(`user:${fromUserId}`).emit("messages_read_by", { readBy: socket.userId }); });
-    socket.on("disconnect", () => {
-        if (socket.userId) { onlineUsers.delete(socket.userId); io.emit("user_status", { userId: socket.userId, online: false }); }
+
+    // ── typing_start ───────────────────────────────────────────────────────────
+    socket.on("typing_start", ({ toUserId }) => {
+        if (!socket.userId) return;
+
+        // Clear any existing typing timer for this socket
+        const existing = activeTypingSessions.get(socket.id);
+        if (existing) {
+            clearTimeout(existing.timer);
+        }
+
+        // Set new timeout to auto-stop typing after 10 seconds
+        const timer = setTimeout(() => {
+            io.to(`user:${toUserId}`).emit("typing", {
+                fromUserId: socket.userId,
+                typing: false,
+            });
+            activeTypingSessions.delete(socket.id);
+        }, 10000);
+
+        activeTypingSessions.set(socket.id, { toUserId, timer });
+        io.to(`user:${toUserId}`).emit("typing", {
+            fromUserId: socket.userId,
+            typing: true,
+        });
+    });
+
+    // ── typing_stop ────────────────────────────────────────────────────────────
+    socket.on("typing_stop", ({ toUserId }) => {
+        if (!socket.userId) return;
+        const existing = activeTypingSessions.get(socket.id);
+        if (existing) {
+            clearTimeout(existing.timer);
+            activeTypingSessions.delete(socket.id);
+        }
+        io.to(`user:${toUserId}`).emit("typing", {
+            fromUserId: socket.userId,
+            typing: false,
+        });
+    });
+
+    // ── messages_read (persist to DB + notify sender) ──────────────────────────
+    socket.on("messages_read", async ({ fromUserId }) => {
+        if (!socket.userId || !fromUserId) return;
+        try {
+            // Persist read receipts to database
+            const result = await Message.updateMany(
+                {
+                    fromUserId,
+                    toUserId: socket.userId,
+                    isRead: false,
+                    isDeleted: false,
+                },
+                {
+                    isRead: true,
+                    readAt: new Date(),
+                }
+            );
+
+            // Notify sender that their messages were read
+            io.to(`user:${fromUserId}`).emit("messages_read_by", {
+                readBy: socket.userId,
+                readAt: new Date().toISOString(),
+            });
+
+            // Update unread count for the reader
+            const unreadCount = await getUnreadMessageCount(socket.userId);
+            io.to(`user:${socket.userId}`).emit("unread_message_count", { count: unreadCount });
+        } catch (err) {
+            console.error("[Socket] messages_read error:", err.message);
+        }
+    });
+
+    // ── get_unread_counts (request current unread totals) ──────────────────────
+    socket.on("get_unread_counts", async () => {
+        if (!socket.userId) return;
+        const unreadCount = await getUnreadMessageCount(socket.userId);
+        socket.emit("unread_message_count", { count: unreadCount });
+    });
+
+    // ── disconnect ─────────────────────────────────────────────────────────────
+    socket.on("disconnect", async () => {
+        console.log(`[Socket] User disconnected: ${userId} (socket: ${socket.id})`);
+
+        // Clear typing status for this socket
+        const typingSession = activeTypingSessions.get(socket.id);
+        if (typingSession) {
+            clearTimeout(typingSession.timer);
+            io.to(`user:${typingSession.toUserId}`).emit("typing", {
+                fromUserId: userId,
+                typing: false,
+            });
+            activeTypingSessions.delete(socket.id);
+        }
+
+        // Remove from multi-device tracking
+        const sockets = userSockets.get(userId);
+        if (sockets) {
+            sockets.delete(socket.id);
+            // Only emit offline if ALL sockets for this user are gone
+            if (sockets.size === 0) {
+                userSockets.delete(userId);
+                onlineUsers.delete(userId);
+                await updateLastSeen(userId);
+                io.emit("user_status", { userId, online: false });
+
+                // Emit lastSeen to their conversations
+                io.emit("user_last_seen", { userId, lastSeen: new Date().toISOString() });
+            }
+        } else {
+            onlineUsers.delete(userId);
+            await updateLastSeen(userId);
+            io.emit("user_status", { userId, online: false });
+            io.emit("user_last_seen", { userId, lastSeen: new Date().toISOString() });
+        }
     });
 });
 
+// ── Periodic ping/pong monitoring for connection health ────────────────────────
+setInterval(() => {
+    const connectedCount = io.engine?.clientsCount || 0;
+    const onlineCount = onlineUsers.size;
+    if (connectedCount > 0) {
+        console.log(`[Socket Health] Connected: ${connectedCount}, Online users: ${onlineCount}`);
+    }
+}, 60000); // every 60 seconds
+
 // ── CORS & Security middleware ───────────────────────────────────────────────
-// CORS MUST come before helmet. Helmet's default crossOriginEmbedderPolicy
-// (require-corp) and crossOriginOpenerPolicy (same-origin) add response
-// headers that cause production CORS preflight (OPTIONS) to return 500.
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 app.use(helmet({
@@ -118,6 +348,18 @@ app.use(helmet({
     crossOriginEmbedderPolicy: false,
     crossOriginOpenerPolicy: false,
 }));
+
+// IMPORTANT: Webhook route must be BEFORE express.json() to receive raw body
+// The webhook route handles its own body parsing
+app.use("/api/premium/paystack-webhook", (req, res, next) => {
+    // This route is handled by premiumRoutes which uses express.raw()
+    next();
+}, (req, res, next) => {
+    // Skip JSON parsing for webhook - premiumRoutes handles it
+    if (req.path === "/api/premium/paystack-webhook") return;
+    next();
+});
+
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 if (process.env.NODE_ENV !== "production") app.use(requestLogger);
@@ -159,22 +401,15 @@ app.use((_req, res) => res.status(404).json({ success: false, message: "Route no
 app.use(errorHandler);
 
 // ── Start ─────────────────────────────────────────────────────────────────────
-// connectDB is non-blocking — the server starts regardless of DB status.
-// Auth routes return 503 when DB is not connected.
-
-// Guard: warn if JWT_SECRET is using the insecure default
 if (!process.env.JWT_SECRET) {
     console.warn("⚠️  JWT_SECRET is not set in backend/.env — using insecure development default.");
     console.warn("   Set JWT_SECRET in production to protect user sessions.\n");
 }
 
 const start = async () => {
-    await connectDB(); // never throws — falls back gracefully
+    await connectDB();
+    verifyEmailService().catch(() => { });
 
-    // Verify email service at startup — non-blocking, logs result
-    verifyEmailService().catch(() => { }); // errors already logged inside
-
-    // Handle EADDRINUSE and other listen errors before they become uncaughtExceptions
     server.on("error", (err) => {
         if (err.code === "EADDRINUSE") {
             console.error(`\n❌ Port ${PORT} is already in use.`);
@@ -187,12 +422,63 @@ const start = async () => {
         process.exit(1);
     });
 
+    // ── Premium Expiry Scheduler ──────────────────────────────────────────────
+    // Check every 15 minutes for expired subscriptions and downgrade users
+    const PREMIUM_EXPIRY_INTERVAL = 15 * 60 * 1000; // 15 minutes
+    setInterval(async () => {
+        try {
+            const { Subscription } = await import("./models/Subscription.js");
+            const { User } = await import("./models/User.js");
+            const now = new Date();
+
+            const expiredSubs = await Subscription.find({
+                status: "active",
+                endDate: { $lte: now },
+            });
+
+            for (const sub of expiredSubs) {
+                sub.status = "expired";
+                sub.autoRenew = false;
+                await sub.save();
+
+                const user = await User.findById(sub.userId);
+                if (user) {
+                    user.isPremium = false;
+                    user.premiumTier = "basic";
+                    user.premiumExpires = undefined;
+                    await user.save();
+
+                    if (global.io) {
+                        global.io.to(`user:${user._id}`).emit("premium_status_changed", {
+                            isPremium: false,
+                            premiumTier: "basic",
+                            premiumExpires: null,
+                        });
+                    }
+                }
+            }
+
+            if (expiredSubs.length > 0) {
+                console.log(`[Scheduler] Expired ${expiredSubs.length} premium subscriptions`);
+            }
+
+            // Also clear expired boosts
+            await User.updateMany(
+                { boostExpires: { $lte: now } },
+                { $unset: { boostExpires: "" } }
+            );
+        } catch (err) {
+            console.error("[Scheduler] Premium expiry check error:", err.message);
+        }
+    }, PREMIUM_EXPIRY_INTERVAL);
+
     server.listen(PORT, () => {
         const dbStatus = isMongoConnected() ? "✅ MongoDB connected" : "⚠️  Memory mode (MongoDB not connected)";
         console.log(`\n🚀 Server running  → http://localhost:${PORT}`);
         console.log(`   Health check   → http://localhost:${PORT}/api/health`);
         console.log(`   Database       → ${dbStatus}`);
         console.log(`   Socket.io      → enabled`);
+        console.log(`   Premium expiry scheduler → every 15 minutes`);
         console.log(`   Environment    → ${process.env.NODE_ENV || "development"}\n`);
     });
 };
@@ -200,17 +486,13 @@ const start = async () => {
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
 const shutdown = async () => {
     console.log("\n⏹  Shutting down…");
-    // 1. Stop accepting new Socket.IO connections
     io.close(() => console.log("   Socket.IO server closed."));
-    // 2. Disconnect from MongoDB
     await mongoose.disconnect();
     console.log("   MongoDB disconnected.");
-    // 3. Close the HTTP server
     server.close(() => {
         console.log("   HTTP server closed.");
         process.exit(0);
     });
-    // Force exit after 15 seconds if something hangs
     setTimeout(() => {
         console.error("   ⚠️  Forced shutdown after timeout.");
         process.exit(0);

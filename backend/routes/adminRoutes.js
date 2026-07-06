@@ -5,8 +5,24 @@ import { Report } from "../models/Report.js";
 import { AdminLog } from "../models/AdminLog.js";
 import { Announcement } from "../models/Announcement.js";
 import { Payment } from "../models/Payment.js";
+import { Message } from "../models/Message.js";
+import { Notification } from "../models/Notification.js";
 import { authenticateToken } from "../middleware/auth.js";
 import { loadUser, authorize } from "../middleware/rbac.js";
+import {
+    getDashboardStats,
+    getUserAnalytics,
+    getRevenueAnalytics,
+    getChatMessages,
+    moderateMessage,
+    getFlaggedPhotos,
+    moderatePhoto,
+    sendPushNotification,
+    logAction,
+    PERMISSIONS,
+    ROLE_PERMISSIONS,
+    getRolePermissions,
+} from "../services/adminService.js";
 
 const router = express.Router();
 

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from "react";
 import { io, type Socket } from "socket.io-client";
 import { useAuth } from "./AuthContext";
 import { getAuthToken } from "../services/apiService";
@@ -7,10 +7,15 @@ interface SocketContextValue {
     socket: Socket | null;
     connected: boolean;
     onlineUsers: Set<string>;
+    lastSeen: Map<string, string>;
+    deliveredMessages: Map<string, string>;
+    unreadMessageCount: number;
     sendMessage: (toUserId: string, content: string, image?: string, tempId?: string) => void;
     startTyping: (toUserId: string) => void;
     stopTyping: (toUserId: string) => void;
     markRead: (fromUserId: string) => void;
+    requestUnreadCount: () => void;
+    premiumStatus: { isPremium: boolean; premiumTier: string; premiumExpires: string | null } | null;
 }
 
 const SocketContext = createContext<SocketContextValue | null>(null);
@@ -26,39 +31,71 @@ const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
 export const SocketProvider = ({ children }: { children: ReactNode }) => {
     const { user, isAuthenticated } = useAuth();
     const socketRef = useRef<Socket | null>(null);
+    const [socket, setSocket] = useState<Socket | null>(null);
     const [connected, setConnected] = useState(false);
     const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+    const [lastSeen, setLastSeen] = useState<Map<string, string>>(new Map());
+    const [deliveredMessages, setDeliveredMessages] = useState<Map<string, string>>(new Map());
+    const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+    const [premiumStatus, setPremiumStatus] = useState<{ isPremium: boolean; premiumTier: string; premiumExpires: string | null } | null>(null);
 
     useEffect(() => {
         if (!isAuthenticated || !user) {
-            socketRef.current?.disconnect();
-            socketRef.current = null;
+            if (socketRef.current) {
+                socketRef.current.disconnect();
+                socketRef.current = null;
+                setSocket(null);
+            }
             setConnected(false);
             return;
         }
 
-        // Only connect once
         if (socketRef.current?.connected) return;
 
         const token = getAuthToken();
-        const socket = io(SOCKET_URL, {
+        const newSocket = io(SOCKET_URL, {
             transports: ["websocket", "polling"],
             reconnection: true,
-            reconnectionAttempts: 10,
-            reconnectionDelay: 2000,
+            reconnectionAttempts: Infinity,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 30000,
+            randomizationFactor: 0.5,
             auth: { token },
         });
 
-        socketRef.current = socket;
+        socketRef.current = newSocket;
 
-        socket.on("connect", () => {
+        newSocket.on("connect", () => {
+            console.log("[Socket] Connected");
             setConnected(true);
-            socket.emit("user_online", { userId: user._id, token: getAuthToken() });
+            setSocket(newSocket);
+            newSocket.emit("user_online", { userId: user._id });
+            // Request unread count on reconnect
+            newSocket.emit("get_unread_counts");
         });
 
-        socket.on("disconnect", () => setConnected(false));
+        newSocket.on("disconnect", (reason) => {
+            console.log("[Socket] Disconnected:", reason);
+            setConnected(false);
+        });
 
-        socket.on("user_status", ({ userId, online }: { userId: string; online: boolean }) => {
+        newSocket.on("connect_error", (err) => {
+            console.error("[Socket] Connection error:", err.message);
+            setConnected(false);
+        });
+
+        newSocket.on("reconnect", (attempt) => {
+            console.log(`[Socket] Reconnected after ${attempt} attempts`);
+            setConnected(true);
+            newSocket.emit("user_online", { userId: user._id });
+            newSocket.emit("get_unread_counts");
+        });
+
+        newSocket.on("reconnect_attempt", (attempt) => {
+            console.log(`[Socket] Reconnect attempt #${attempt}`);
+        });
+
+        newSocket.on("user_status", ({ userId, online }: { userId: string; online: boolean }) => {
             setOnlineUsers(prev => {
                 const next = new Set(prev);
                 if (online) next.add(userId); else next.delete(userId);
@@ -66,25 +103,76 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
             });
         });
 
+        newSocket.on("user_last_seen", ({ userId, lastSeen: ls }: { userId: string; lastSeen: string }) => {
+            setLastSeen(prev => {
+                const next = new Map(prev);
+                next.set(userId, ls);
+                return next;
+            });
+        });
+
+        newSocket.on("messages_delivered", ({ toUserId, deliveredAt }: { toUserId: string; deliveredAt: string }) => {
+            setDeliveredMessages(prev => {
+                const next = new Map(prev);
+                next.set(toUserId, deliveredAt);
+                return next;
+            });
+        });
+
+        newSocket.on("unread_message_count", ({ count }: { count: number }) => {
+            setUnreadMessageCount(count);
+        });
+
+        // ── premium_status_changed ────────────────────────────────────────────
+        newSocket.on("premium_status_changed", (data: { isPremium: boolean; premiumTier: string; premiumExpires: string | null }) => {
+            setPremiumStatus(data);
+            // Also update the user in AuthContext via refreshUser
+            // The AuthContext will pick up the change on next refresh
+        });
+
         return () => {
-            socket.disconnect();
+            console.log("[Socket] Cleaning up connection");
+            newSocket.disconnect();
+            socketRef.current = null;
+            setSocket(null);
             setConnected(false);
         };
-    }, [isAuthenticated, user]);
+    }, [isAuthenticated, user?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const sendMessage = (toUserId: string, content: string, image?: string, tempId?: string) => {
+    const sendMessage = useCallback((toUserId: string, content: string, image?: string, tempId?: string) => {
         socketRef.current?.emit("send_message", { toUserId, content, image, tempId });
-    };
+    }, []);
 
-    const startTyping = (toUserId: string) => socketRef.current?.emit("typing_start", { toUserId });
-    const stopTyping = (toUserId: string) => socketRef.current?.emit("typing_stop", { toUserId });
-    const markRead = (fromUserId: string) => socketRef.current?.emit("messages_read", { fromUserId });
+    const startTyping = useCallback((toUserId: string) => {
+        socketRef.current?.emit("typing_start", { toUserId });
+    }, []);
+
+    const stopTyping = useCallback((toUserId: string) => {
+        socketRef.current?.emit("typing_stop", { toUserId });
+    }, []);
+
+    const markRead = useCallback((fromUserId: string) => {
+        socketRef.current?.emit("messages_read", { fromUserId });
+    }, []);
+
+    const requestUnreadCount = useCallback(() => {
+        socketRef.current?.emit("get_unread_counts");
+    }, []);
 
     return (
         <SocketContext.Provider value={{
-            socket: socketRef.current,
-            connected, onlineUsers,
-            sendMessage, startTyping, stopTyping, markRead,
+            socket,
+            connected,
+            onlineUsers,
+            lastSeen,
+            deliveredMessages,
+            unreadMessageCount,
+            sendMessage,
+            startTyping,
+            stopTyping,
+            markRead,
+            requestUnreadCount,
+            premiumStatus,
         }}>
             {children}
         </SocketContext.Provider>

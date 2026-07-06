@@ -3,11 +3,14 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { notificationAPI } from "../services/apiService";
 import { useSocket } from "../context/SocketContext";
+import PremiumBadge from "./PremiumBadge";
 import "../style/appNavbar.css";
 
-const AppNavbar = ({ unreadMessages = 0 }: { unreadMessages?: number }) => {
+const AppNavbar = ({ unreadMessages: propUnreadMessages }: { unreadMessages?: number }) => {
     const { user, logout } = useAuth();
-    const { socket } = useSocket();
+    const { socket, unreadMessageCount: socketUnreadCount } = useSocket();
+    // Use socket unread count if available, otherwise fall back to prop
+    const unreadMessages = socketUnreadCount > 0 ? socketUnreadCount : (propUnreadMessages || 0);
     const location = useLocation();
     const navigate = useNavigate();
     const [menuOpen, setMenuOpen] = useState(false);
@@ -91,7 +94,11 @@ const AppNavbar = ({ unreadMessages = 0 }: { unreadMessages?: number }) => {
 
                 {/* Right side */}
                 <div className="app-nav-right">
-                    {user && !user.isPremium && (
+                    {user && user.isPremium ? (
+                        <div className="app-nav-premium-badge">
+                            <PremiumBadge tier={user.premiumTier} size="sm" />
+                        </div>
+                    ) : (
                         <Link to="/premium" className="app-nav-upgrade">
                             ✨ Go Premium
                         </Link>

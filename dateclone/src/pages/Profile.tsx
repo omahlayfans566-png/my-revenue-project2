@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import AppNavbar from "../component/AppNavbar";
 import { useAuth } from "../context/AuthContext";
+import PremiumBadge from "../component/PremiumBadge";
 import "../style/profile.css";
 
 // Calculate profile completeness percentage
@@ -47,7 +48,9 @@ const Profile = () => {
                             <div className="profile-avatar profile-avatar-placeholder">{initials}</div>
                         )}
                         {user.isPremium && (
-                            <div className="profile-premium-badge">✨ {u.premiumTier?.toUpperCase()}</div>
+                            <div className="profile-premium-badge">
+                                <PremiumBadge tier={u.premiumTier} size="lg" />
+                            </div>
                         )}
                     </div>
                     <div className="profile-hero-info">

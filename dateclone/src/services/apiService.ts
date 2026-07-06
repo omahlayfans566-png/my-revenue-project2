@@ -264,16 +264,16 @@ export const paymentAPI = {
 export const premiumAPI = {
     getPricing: async () => apiCall("/premium/pricing"),
 
-    initializePaystack: async (plan: string, durationDays: number = 30) =>
+    initializePaystack: async (plan: string, durationDays: number = 30, isYearly: boolean = false) =>
         apiCall("/premium/initialize-paystack", {
             method: "POST",
-            body: JSON.stringify({ plan, durationDays }),
+            body: JSON.stringify({ plan, durationDays, isYearly }),
         }),
 
-    verifyPaystack: async (reference: string, plan: string, durationDays: number = 30, trxref?: string) =>
+    verifyPaystack: async (reference: string, plan: string, durationDays: number = 30, trxref?: string, isYearly: boolean = false) =>
         apiCall("/premium/verify-paystack", {
             method: "POST",
-            body: JSON.stringify({ reference, plan, durationDays, trxref }),
+            body: JSON.stringify({ reference, plan, durationDays, trxref, isYearly }),
         }),
 
     getStatus: async () => apiCall("/premium/status"),
@@ -281,7 +281,23 @@ export const premiumAPI = {
     cancel: async () =>
         apiCall("/premium/cancel", { method: "POST" }),
 
+    reactivate: async () =>
+        apiCall("/premium/reactivate", { method: "POST" }),
+
     getHistory: async () => apiCall("/premium/history"),
+
+    requestRefund: async (paymentId: string, reason: string) =>
+        apiCall("/premium/request-refund", {
+            method: "POST",
+            body: JSON.stringify({ paymentId, reason }),
+        }),
+
+    boost: async () =>
+        apiCall("/premium/boost", { method: "POST" }),
+
+    getBoostStatus: async () => apiCall("/premium/boost-status"),
+
+    getAnalytics: async () => apiCall("/premium/analytics"),
 };
 
 // ============================================

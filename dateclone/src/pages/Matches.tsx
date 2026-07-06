@@ -2,6 +2,9 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import AppNavbar from "../component/AppNavbar";
 import { matchAPI } from "../services/apiService";
+import { useAuth } from "../context/AuthContext";
+import { usePremium } from "../services/premiumService";
+import PremiumBadge from "../component/PremiumBadge";
 import "../style/matches.css";
 import { useSocket } from "../context/SocketContext";
 
@@ -26,6 +29,8 @@ interface MatchItem {
 const Matches = () => {
     const navigate = useNavigate();
     const { socket } = useSocket();
+    const { user } = useAuth();
+    const { isPremium, can } = usePremium();
     const [matches, setMatches] = useState<MatchItem[]>([]);
     const [likes, setLikes] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -176,10 +181,48 @@ const Matches = () => {
                         <div className="empty-state">
                             <div className="empty-icon">💝</div>
                             <h3>No likes yet</h3>
-                            <p>Upgrade to Premium to see who likes you!</p>
-                            <button className="btn btn-primary" onClick={() => navigate("/premium")} style={{ marginTop: 16 }}>
-                                ✨ Go Premium
+                            {isPremium ? (
+                                <p>No one has liked your profile yet. Keep swiping!</p>
+                            ) : (
+                                <p>Upgrade to Premium to see who likes you!</p>
+                            )}
+                            <button className="btn btn-primary" onClick={() => navigate(isPremium ? "/discover" : "/premium")} style={{ marginTop: 16 }}>
+                                {isPremium ? "Start Swiping" : "✨ Go Premium"}
                             </button>
+                        </div>
+                    ) : isPremium ? (
+                        <div className="matches-grid">
+                            {likes.map((l) => {
+                                const from = l.from;
+                                const li = `${from?.firstName?.[0] ?? ""}${from?.lastName?.[0] ?? ""}`.toUpperCase();
+                                return (
+                                    <div key={l._id} className="match-card likes-card" onClick={() => navigate(`/profile/${from._id}`)}>
+                                        <div className="match-card-photo">
+                                            {from?.profilePicture ? (
+                                                <img src={from.profilePicture} alt={from.firstName} />
+                                            ) : (
+                                                <div className="match-card-placeholder">{li || "?"}</div>
+                                            )}
+                                            {l.isSuperLike && <div className="match-card-badge superlike">⭐ Super Like</div>}
+                                        </div>
+                                        <div className="match-card-info">
+                                            <h3>{from?.firstName || "Someone"}, {from?.age ?? "?"}</h3>
+                                            <p className="match-card-location">
+                                                {from?.city ?? ""}{from?.city && from?.country ? ", " : ""}{from?.country ?? ""}
+                                            </p>
+                                            {from?.occupation && <p className="match-card-occupation">{from.occupation}</p>}
+                                        </div>
+                                        <div className="match-card-actions">
+                                            <button className="match-action-btn msg" onClick={(e) => { e.stopPropagation(); navigate(`/chat/${from._id}`); }}>
+                                                💬 Say Hi
+                                            </button>
+                                            <button className="match-action-btn view" onClick={(e) => { e.stopPropagation(); navigate(`/profile/${from._id}`); }}>
+                                                👤 View
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     ) : (
                         <div className="matches-grid">
@@ -202,6 +245,16 @@ const Matches = () => {
                                     </div>
                                 </div>
                             ))}
+                            <div className="match-card premium-upsell-card" onClick={() => navigate("/premium")}>
+                                <div className="match-card-photo premium-upsell-photo">
+                                    <div className="premium-upsell-content">
+                                        <span>✨</span>
+                                        <h3>See Who Likes You</h3>
+                                        <p>Upgrade to Premium to see everyone who liked your profile and match instantly!</p>
+                                        <button className="btn btn-primary btn-sm">Go Premium</button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     )
                 )}

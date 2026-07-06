@@ -146,8 +146,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             const res = await authAPI.getCurrentUser();
             setUser(res.user);
             saveUserToLocal(res.user);
+            return res.user;
         } catch {
             logout();
+            return null;
         }
     }, [logout]);
 

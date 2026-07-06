@@ -40,6 +40,8 @@ const paymentSchema = new mongoose.Schema(
         // Admin
         processedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
         notes: String,
+        // Metadata (flexible)
+        metadata: mongoose.Schema.Types.Mixed,
         // Refund
         refundedAt: Date,
         refundReason: String,

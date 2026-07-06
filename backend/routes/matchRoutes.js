@@ -71,6 +71,63 @@ router.get("/online", authenticateToken, async (_req, res) => {
     }
 });
 
+// ── Helper: check daily like limit ─────────────────────────────────────────────
+const checkDailyLikeLimit = async (userId) => {
+    const user = await User.findById(userId).select("isPremium premiumTier premiumExpires");
+    if (!user) return { allowed: false, message: "User not found" };
+
+    // Premium users have unlimited likes
+    if (user.isPremium && user.premiumExpires && new Date(user.premiumExpires) > new Date()) {
+        return { allowed: true };
+    }
+
+    // Free users: limit to 10 likes per day
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todayLikes = await Match.countDocuments({
+        userId,
+        userLiked: true,
+        createdAt: { $gte: todayStart },
+    });
+
+    const FREE_DAILY_LIMIT = 10;
+    if (todayLikes >= FREE_DAILY_LIMIT) {
+        return { allowed: false, message: `Daily like limit reached (${FREE_DAILY_LIMIT}). Upgrade to Premium for unlimited likes.` };
+    }
+
+    return { allowed: true };
+};
+
+// ── Helper: check daily super like limit ───────────────────────────────────────
+const checkDailySuperLikeLimit = async (userId) => {
+    const user = await User.findById(userId).select("isPremium premiumTier premiumExpires");
+    if (!user) return { allowed: false, message: "User not found" };
+
+    // Premium limits: Basic=5, Gold=10, Platinum=unlimited
+    let maxSuperLikes = 1; // free default
+    if (user.isPremium && user.premiumExpires && new Date(user.premiumExpires) > new Date()) {
+        if (user.premiumTier === "platinum") return { allowed: true }; // unlimited
+        if (user.premiumTier === "gold") maxSuperLikes = 10;
+        else if (user.premiumTier === "basic") maxSuperLikes = 5;
+    }
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todaySuperLikes = await Match.countDocuments({
+        userId,
+        status: "superliked",
+        createdAt: { $gte: todayStart },
+    });
+
+    if (todaySuperLikes >= maxSuperLikes) {
+        return { allowed: false, message: `Daily super like limit reached (${maxSuperLikes}). Upgrade to Premium for more.` };
+    }
+
+    return { allowed: true };
+};
+
 // ── POST /like ────────────────────────────────────────────────────────────────
 router.post("/like", authenticateToken, async (req, res) => {
     try {
@@ -79,6 +136,12 @@ router.post("/like", authenticateToken, async (req, res) => {
 
         if (!likedUserId) return res.status(400).json({ success: false, message: "likedUserId is required" });
         if (userId === likedUserId) return res.status(400).json({ success: false, message: "Cannot like yourself" });
+
+        // Check daily like limit
+        const limitCheck = await checkDailyLikeLimit(userId);
+        if (!limitCheck.allowed) {
+            return res.status(429).json({ success: false, message: limitCheck.message });
+        }
 
         const likedUser = await User.findById(likedUserId);
         if (!likedUser) return res.status(404).json({ success: false, message: "User not found" });
@@ -171,6 +234,12 @@ router.post("/superlike", authenticateToken, async (req, res) => {
 
         if (!likedUserId) return res.status(400).json({ success: false, message: "likedUserId is required" });
         if (userId === likedUserId) return res.status(400).json({ success: false, message: "Cannot super-like yourself" });
+
+        // Check daily super like limit
+        const limitCheck = await checkDailySuperLikeLimit(userId);
+        if (!limitCheck.allowed) {
+            return res.status(429).json({ success: false, message: limitCheck.message });
+        }
 
         let match = await Match.findOne({ userId, matchedUserId: likedUserId });
         if (!match) {

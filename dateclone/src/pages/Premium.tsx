@@ -5,20 +5,31 @@ import toast from "react-hot-toast";
 import AppNavbar from "../component/AppNavbar";
 import { useAuth } from "../context/AuthContext";
 import { premiumAPI } from "../services/apiService";
-import { PREMIUM_PLANS, type PremiumPlan, initializePaystackPayment, PAYSTACK_PUBLIC_KEY } from "../services/premiumService";
+import { PREMIUM_PLANS, YEARLY_PLANS, type PremiumPlan, initializePaystackPayment, PAYSTACK_PUBLIC_KEY } from "../services/premiumService";
 import "../style/premium.css";
 
 const Premium = () => {
     const navigate = useNavigate();
     const { user, refreshUser } = useAuth();
     const [selectedPlan, setSelectedPlan] = useState<string>("gold");
+    const [isYearly, setIsYearly] = useState(false);
     const [loading, setLoading] = useState(false);
     const [status, setStatus] = useState<any>(null);
     const [history, setHistory] = useState<any[]>([]);
     const [showHistory, setShowHistory] = useState(false);
+    const [showRefundModal, setShowRefundModal] = useState(false);
+    const [refundPaymentId, setRefundPaymentId] = useState<string>("");
+    const [refundReason, setRefundReason] = useState("");
+    const [analytics, setAnalytics] = useState<any>(null);
+    const [boostStatus, setBoostStatus] = useState<any>(null);
+    const [boosting, setBoosting] = useState(false);
+
+    const plans = isYearly ? YEARLY_PLANS : PREMIUM_PLANS;
 
     useEffect(() => {
         loadStatus();
+        loadAnalytics();
+        loadBoostStatus();
     }, []);
 
     const loadStatus = async () => {
@@ -32,6 +43,20 @@ const Premium = () => {
         } catch { /* silent */ }
     };
 
+    const loadAnalytics = async () => {
+        try {
+            const res = await premiumAPI.getAnalytics();
+            if (res.success) setAnalytics(res.analytics);
+        } catch { /* silent */ }
+    };
+
+    const loadBoostStatus = async () => {
+        try {
+            const res = await premiumAPI.getBoostStatus();
+            if (res.success) setBoostStatus(res);
+        } catch { /* silent */ }
+    };
+
     const handleSubscribe = async (plan: PremiumPlan) => {
         if (!user) {
             toast.error("Please log in first");
@@ -40,17 +65,15 @@ const Premium = () => {
 
         setLoading(true);
         try {
-            // Initialize payment on backend
-            const res = await premiumAPI.initializePaystack(plan.id, plan.durationDays);
+            const res = await premiumAPI.initializePaystack(plan.id, plan.durationDays, isYearly);
             const { reference, amount, email, metadata } = res.data;
 
-            // Open Paystack popup
             initializePaystackPayment({
                 key: PAYSTACK_PUBLIC_KEY,
                 email,
                 amount,
                 ref: reference,
-                metadata,
+                metadata: { ...metadata, isYearly },
                 callback: async (response) => {
                     toast.success("Payment successful! Activating premium…");
                     try {
@@ -58,12 +81,14 @@ const Premium = () => {
                             response.reference,
                             plan.id,
                             plan.durationDays,
-                            response.reference
+                            response.reference,
+                            isYearly
                         );
                         if (verifyRes.success) {
                             toast.success(`✨ ${verifyRes.message}`);
                             await refreshUser();
                             loadStatus();
+                            loadAnalytics();
                         }
                     } catch (err: any) {
                         toast.error(err.message || "Verification failed. Contact support.");
@@ -95,10 +120,69 @@ const Premium = () => {
         }
     };
 
+    const handleReactivate = async () => {
+        setLoading(true);
+        try {
+            const res = await premiumAPI.reactivate();
+            toast.success(res.message);
+            loadStatus();
+        } catch (err: any) {
+            toast.error(err.message || "Failed to reactivate");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleBoost = async () => {
+        setBoosting(true);
+        try {
+            const res = await premiumAPI.boost();
+            toast.success(res.message);
+            loadBoostStatus();
+        } catch (err: any) {
+            toast.error(err.message || "Failed to boost profile");
+        } finally {
+            setBoosting(false);
+        }
+    };
+
+    const handleRefund = async () => {
+        if (!refundPaymentId || !refundReason.trim()) {
+            toast.error("Please select a payment and provide a reason");
+            return;
+        }
+        setLoading(true);
+        try {
+            const res = await premiumAPI.requestRefund(refundPaymentId, refundReason);
+            toast.success(res.message);
+            setShowRefundModal(false);
+            setRefundReason("");
+            setRefundPaymentId("");
+            await refreshUser();
+            loadStatus();
+            loadAnalytics();
+        } catch (err: any) {
+            toast.error(err.message || "Refund failed");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const isPremium = user?.isPremium && status?.isPremium;
     const daysLeft = status?.subscription?.endDate
         ? Math.max(0, Math.ceil((new Date(status.subscription.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
         : 0;
+
+    const savingsText = (plan: PremiumPlan) => {
+        if (!plan.monthlyEquivalent) return null;
+        const monthlyPlan = PREMIUM_PLANS.find(p => p.id === plan.id);
+        if (!monthlyPlan) return null;
+        const monthlyCost = monthlyPlan.price * 12;
+        const yearlyCost = plan.price;
+        const savings = monthlyCost - yearlyCost;
+        const percent = Math.round((savings / monthlyCost) * 100);
+        return `Save ${percent}% — pay ₦${plan.monthlyEquivalent.toLocaleString()}/mo equivalent`;
+    };
 
     return (
         <div className="page-wrapper">
@@ -153,11 +237,84 @@ const Premium = () => {
                             </div>
                         </div>
                         <div className="premium-active-actions">
-                            <button className="btn btn-outline" onClick={handleCancel} disabled={loading}>
-                                Cancel Subscription
-                            </button>
+                            {status.subscription.autoRenew ? (
+                                <button className="btn btn-outline" onClick={handleCancel} disabled={loading}>
+                                    Cancel Subscription
+                                </button>
+                            ) : status.subscription.status === "cancelled" && daysLeft > 0 ? (
+                                <button className="btn btn-primary" onClick={handleReactivate} disabled={loading}>
+                                    Reactivate Auto-Renew
+                                </button>
+                            ) : null}
                             <button className="btn btn-outline" onClick={() => setShowHistory(!showHistory)}>
                                 {showHistory ? "Hide" : "View"} History
+                            </button>
+                        </div>
+                    </motion.div>
+                )}
+
+                {/* Premium Analytics Card */}
+                {isPremium && analytics && (
+                    <motion.div
+                        className="premium-analytics-card"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                    >
+                        <h3>📊 Premium Analytics</h3>
+                        <div className="premium-analytics-grid">
+                            <div className="premium-analytic-item">
+                                <span className="pa-label">Total Spent</span>
+                                <span className="pa-value">₦{analytics.totalSpent?.toLocaleString() || 0}</span>
+                            </div>
+                            <div className="premium-analytic-item">
+                                <span className="pa-label">Days Premium</span>
+                                <span className="pa-value">{analytics.daysSincePremium || 0}d</span>
+                            </div>
+                            <div className="premium-analytic-item">
+                                <span className="pa-label">Likes Received</span>
+                                <span className="pa-value">{analytics.totalLikesReceived || 0}</span>
+                            </div>
+                            <div className="premium-analytic-item">
+                                <span className="pa-label">Total Matches</span>
+                                <span className="pa-value">{analytics.totalMatches || 0}</span>
+                            </div>
+                            <div className="premium-analytic-item">
+                                <span className="pa-label">Profile Views</span>
+                                <span className="pa-value">{analytics.profileViews || 0}</span>
+                            </div>
+                            <div className="premium-analytic-item">
+                                <span className="pa-label">Payments</span>
+                                <span className="pa-value">{analytics.totalPayments || 0}</span>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+
+                {/* Boost Card */}
+                {isPremium && (
+                    <motion.div
+                        className="premium-boost-card"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                    >
+                        <div className="premium-boost-content">
+                            <div className="premium-boost-icon">🚀</div>
+                            <div className="premium-boost-text">
+                                <h3>Profile Boost</h3>
+                                <p>
+                                    {boostStatus?.isBoosted
+                                        ? `Your profile is boosted until ${new Date(boostStatus.boostEndsAt).toLocaleString()}`
+                                        : user?.premiumTier === "platinum"
+                                            ? "Boost your profile to get seen by more people! Unlimited boosts."
+                                            : `Boost your profile! ${boostStatus?.remainingBoosts || 0} boost${boostStatus?.remainingBoosts !== 1 ? "s" : ""} remaining this week.`}
+                                </p>
+                            </div>
+                            <button
+                                className={`btn ${boostStatus?.isBoosted ? "btn-outline" : "btn-primary"}`}
+                                onClick={handleBoost}
+                                disabled={boosting || boostStatus?.isBoosted}
+                            >
+                                {boosting ? "Boosting…" : boostStatus?.isBoosted ? "✅ Boosted" : "🚀 Boost Now"}
                             </button>
                         </div>
                     </motion.div>
@@ -179,10 +336,23 @@ const Premium = () => {
                                         <div className="phi-left">
                                             <span className="phi-plan">{p.plan?.toUpperCase() || "Premium"}</span>
                                             <span className="phi-date">{new Date(p.createdAt).toLocaleDateString()}</span>
+                                            {p.metadata?.isYearly && <span className="phi-yearly-badge">Yearly</span>}
                                         </div>
                                         <div className="phi-right">
                                             <span className="phi-amount">₦{p.amount?.toLocaleString()}</span>
                                             <span className={`phi-status ${p.status}`}>{p.status}</span>
+                                            {p.status === "success" && !p.refundedAt && (
+                                                <button
+                                                    className="phi-refund-btn"
+                                                    onClick={() => {
+                                                        setRefundPaymentId(p._id);
+                                                        setShowRefundModal(true);
+                                                    }}
+                                                    title="Request refund"
+                                                >
+                                                    ↩️
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
@@ -191,12 +361,30 @@ const Premium = () => {
                     )}
                 </AnimatePresence>
 
+                {/* Monthly / Yearly toggle */}
+                {!isPremium && (
+                    <div className="premium-billing-toggle">
+                        <button
+                            className={`pbt-btn ${!isYearly ? "active" : ""}`}
+                            onClick={() => setIsYearly(false)}
+                        >
+                            Monthly
+                        </button>
+                        <button
+                            className={`pbt-btn ${isYearly ? "active" : ""}`}
+                            onClick={() => setIsYearly(true)}
+                        >
+                            Yearly <span className="pbt-save-badge">Save 33%</span>
+                        </button>
+                    </div>
+                )}
+
                 {/* Plans grid */}
                 {!isPremium && (
                     <div className="premium-plans">
-                        {PREMIUM_PLANS.map((plan, i) => (
+                        {plans.map((plan, i) => (
                             <motion.div
-                                key={plan.id}
+                                key={`${plan.id}-${isYearly ? "yearly" : "monthly"}`}
                                 className={`premium-plan-card ${selectedPlan === plan.id ? "selected" : ""} ${plan.popular ? "popular" : ""}`}
                                 initial={{ opacity: 0, y: 30 }}
                                 animate={{ opacity: 1, y: 0 }}
@@ -209,9 +397,12 @@ const Premium = () => {
                                     <div className="plan-price">
                                         <span className="plan-currency">₦</span>
                                         <span className="plan-amount">{plan.price.toLocaleString()}</span>
-                                        <span className="plan-period">/month</span>
+                                        <span className="plan-period">/{isYearly ? "year" : "month"}</span>
                                     </div>
-                                    <p className="plan-price-usd">≈ ${plan.priceUSD}/month</p>
+                                    <p className="plan-price-usd">≈ ${plan.priceUSD}/{isYearly ? "yr" : "mo"}</p>
+                                    {isYearly && plan.monthlyEquivalent && (
+                                        <p className="plan-price-equivalent">₦{plan.monthlyEquivalent.toLocaleString()}/mo equivalent</p>
+                                    )}
                                 </div>
                                 <div className="plan-features">
                                     {plan.features.map((f, fi) => (
@@ -275,6 +466,54 @@ const Premium = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Refund Modal */}
+            <AnimatePresence>
+                {showRefundModal && (
+                    <motion.div
+                        className="premium-modal-overlay"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setShowRefundModal(false)}
+                    >
+                        <motion.div
+                            className="premium-modal"
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <h3>Request Refund</h3>
+                            <p className="premium-modal-sub">
+                                Refunds are processed within 5-10 business days. Premium features will be revoked immediately.
+                            </p>
+                            <div className="premium-modal-field">
+                                <label>Reason for refund</label>
+                                <textarea
+                                    placeholder="Tell us why you're requesting a refund…"
+                                    value={refundReason}
+                                    onChange={e => setRefundReason(e.target.value)}
+                                    rows={3}
+                                />
+                            </div>
+                            <div className="premium-modal-actions">
+                                <button className="btn btn-outline" onClick={() => setShowRefundModal(false)}>
+                                    Cancel
+                                </button>
+                                <button
+                                    className="btn"
+                                    style={{ background: "#ef4444", color: "white" }}
+                                    onClick={handleRefund}
+                                    disabled={loading || !refundReason.trim()}
+                                >
+                                    {loading ? "Processing…" : "Request Refund"}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

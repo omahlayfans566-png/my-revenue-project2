@@ -514,3 +514,97 @@
   border: 1px solid rgba(59, 130, 246, 0.2);
   color: #1e40af;
 }
+
+/* ── PageLoader — branded splash that replaces the blank white flash ──────── */
+.page-loader {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  background: linear-gradient(135deg, #fff5f7 0%, #fce4ec 50%, #ffffff 100%);
+}
+
+.page-loader-spinner {
+  position: relative;
+  width: 56px;
+  height: 56px;
+}
+
+.spinner-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  border-top-color: #FF4D8D;
+  animation: spin 0.9s linear infinite;
+}
+
+.spinner-ring-2 {
+  inset: 6px;
+  border-top-color: #FF7AA8;
+  animation-duration: 0.7s;
+  animation-direction: reverse;
+}
+
+.page-loader-text {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #FF4D8D;
+  letter-spacing: 0.04em;
+  margin: 0;
+  animation: fadeInOut 1.6s ease-in-out infinite;
+}
+
+@keyframes fadeInOut {
+
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ── Error boundary ────────────────────────────────────────────────────────── */
+.error-boundary {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #FAFAFC;
+}
+
+.error-boundary-content {
+  text-align: center;
+  max-width: 400px;
+  background: white;
+  border-radius: 20px;
+  padding: 40px 32px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  border: 1px solid #E5E7EB;
+}
+
+.error-boundary-icon {
+  font-size: 3rem;
+  display: block;
+  margin-bottom: 16px;
+}
+
+.error-boundary-content h2 {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #1F2937;
+  margin-bottom: 10px;
+}
+
+.error-boundary-content p {
+  color: #6B7280;
+  font-size: 0.9rem;
+  margin-bottom: 24px;
+  line-height: 1.6;
+}

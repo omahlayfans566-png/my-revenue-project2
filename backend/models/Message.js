@@ -21,6 +21,8 @@ const messageSchema = new mongoose.Schema(
         },
         isRead: { type: Boolean, default: false },
         readAt: Date,
+        isDelivered: { type: Boolean, default: false },
+        deliveredAt: Date,
         isDeleted: { type: Boolean, default: false },
         deletedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
         reaction: String, // emoji reaction
@@ -37,5 +39,6 @@ const messageSchema = new mongoose.Schema(
 // Indexes for fast queries
 messageSchema.index({ fromUserId: 1, toUserId: 1, createdAt: -1 });
 messageSchema.index({ toUserId: 1, isRead: 1, isDeleted: 1 });
+messageSchema.index({ toUserId: 1, isDelivered: 1 });
 
 export const Message = mongoose.model("Message", messageSchema);

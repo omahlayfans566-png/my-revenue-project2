@@ -1,50 +1,62 @@
+/**
+ * Match.js
+ *
+ * Tracks swipe actions between users and mutual-match status.
+ *
+ * Field naming is deliberately route-aligned:
+ *   userId        — the user who performed the action (liker)
+ *   matchedUserId — the user who was acted upon
+ *   status        — "liked" | "superliked" | "rejected" | "matched" | "blocked"
+ *
+ * A mutual match exists when TWO records have status "matched":
+ *   (userId: A, matchedUserId: B, status: "matched")
+ *   (userId: B, matchedUserId: A, status: "matched")
+ */
 import mongoose from "mongoose";
 
 const matchSchema = new mongoose.Schema(
     {
-        users: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-        user1: {
+        // ── Who acted and who was acted upon ─────────────────────────────────
+        userId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             required: true,
         },
-        user2: {
+        matchedUserId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             required: true,
         },
-        // Who initiated the match
-        initiatedBy: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "User",
+
+        // ── Action ────────────────────────────────────────────────────────────
+        userLiked: { type: Boolean, default: false },
+        userLikedAt: Date,
+        status: {
+            type: String,
+            enum: ["liked", "superliked", "rejected", "matched", "blocked"],
+            default: "liked",
         },
-        // Like types
-        user1Liked: { type: Boolean, default: false },
-        user2Liked: { type: Boolean, default: false },
-        user1SuperLiked: { type: Boolean, default: false },
-        user2SuperLiked: { type: Boolean, default: false },
-        // Match status
-        isMatch: { type: Boolean, default: false },
+
+        // ── Match timestamps ──────────────────────────────────────────────────
         matchedAt: Date,
-        // Unmatch tracking
-        isUnmatched: { type: Boolean, default: false },
-        unmatchedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-        unmatchedAt: Date,
-        // Block tracking
-        blockedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-        // Last activity
+
+        // ── Messaging activity ────────────────────────────────────────────────
+        messagesSent: { type: Number, default: 0 },
         lastMessageAt: Date,
-        messagesCount: { type: Number, default: 0 },
     },
     { timestamps: true }
 );
 
-// Indexes
-matchSchema.index({ user1: 1, user2: 1 }, { unique: true });
-matchSchema.index({ users: 1 });
-matchSchema.index({ isMatch: 1, matchedAt: -1 });
-matchSchema.index({ user1: 1, isMatch: 1 });
-matchSchema.index({ user2: 1, isMatch: 1 });
+// ── Indexes ────────────────────────────────────────────────────────────────────
+// Unique: one record per (actor, target) pair
+matchSchema.index({ userId: 1, matchedUserId: 1 }, { unique: true });
+
+// Efficient mutual-match lookup
+matchSchema.index({ matchedUserId: 1, status: 1 });
+matchSchema.index({ userId: 1, status: 1 });
+
+// Dashboard / Matches page sorting
+matchSchema.index({ matchedAt: -1 });
 matchSchema.index({ lastMessageAt: -1 });
 
 export const Match = mongoose.model("Match", matchSchema);
