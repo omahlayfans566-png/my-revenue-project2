@@ -24,6 +24,7 @@ const Settings = lazy(() => import("./pages/Settings"));
 const ProfileWizard = lazy(() => import("./component/ProfileWizard"));
 const ViewProfile = lazy(() => import("./pages/ViewProfile"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const PaymentCallback = lazy(() => import("./pages/PaymentCallback"));
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { SocketProvider } from "./context/SocketContext";
@@ -127,6 +128,9 @@ function AppRoutes() {
         <Route path="/terms" element={<Terms />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/premium" element={<Premium />} />
+
+        {/* Paystack payment callback — public, handles redirect from payment gateway */}
+        <Route path="/payment/callback" element={<PaymentCallback />} />
 
         {/* Public-only */}
         <Route

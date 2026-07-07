@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 import AppNavbar from "../component/AppNavbar";
 import { discoveryAPI, matchAPI } from "../services/apiService";
 import { useSocket } from "../context/SocketContext";
@@ -386,7 +387,7 @@ const Discover = () => {
     useEffect(() => {
         discoveryAPI.getFilters()
             .then(res => setAvailableFilters(res.filters))
-            .catch(() => {});
+            .catch(() => { });
     }, []);
 
     // Load profiles
@@ -431,20 +432,45 @@ const Discover = () => {
     const doAction = async (dir: "right" | "left" | "up", action: () => Promise<any>) => {
         if (!current || actionLoading) return;
         setAL(dir); setSwipeDir(dir);
+        let errorMsg: string | null = null;
         try {
             const res = await action();
             if (res?.isMatch) {
                 setMatchModal(current);
+                toast("💕 It's a Match!", {
+                    duration: 3000,
+                    style: { background: "#ff4081", color: "#fff" },
+                });
             }
-        } catch { /* silent */ }
+        } catch (err: any) {
+            // Capture the error message from the server
+            errorMsg = err?.message || "Something went wrong";
+            // 429 = daily like limit reached — surface it clearly
+            // Other errors are also surfaced so users know what happened
+            console.error("[Like/Pass/SuperLike error]", err);
+        }
         setTimeout(() => {
             setSwipeDir(null); setAL(null);
-            setIndex(i => i + 1);
-            // Load more when reaching end
-            if (index >= profiles.length - 3 && hasMore && !loadingMore) {
-                const nextPage = page + 1;
-                setPage(nextPage);
-                loadProfiles(nextPage, true);
+            // Only advance the card if the action succeeded (no error)
+            if (!errorMsg) {
+                setIndex(i => i + 1);
+                // Load more when reaching end
+                if (index >= profiles.length - 3 && hasMore && !loadingMore) {
+                    const nextPage = page + 1;
+                    setPage(nextPage);
+                    loadProfiles(nextPage, true);
+                }
+            } else {
+                // Show the actual server error as a toast
+                // Rate limit gets a special message
+                if (errorMsg!.toLowerCase().includes("limit") || errorMsg!.toLowerCase().includes("429")) {
+                    toast("❤️ Daily like limit reached. Upgrade to Premium for unlimited likes!", {
+                        duration: 5000,
+                        style: { background: "#ff4081", color: "#fff" },
+                    });
+                } else {
+                    toast.error(errorMsg!);
+                }
             }
         }, 450);
     };

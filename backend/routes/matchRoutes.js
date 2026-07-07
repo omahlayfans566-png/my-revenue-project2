@@ -191,7 +191,7 @@ router.post("/like", authenticateToken, async (req, res) => {
                 referenceId: likedUserId,
                 referenceModel: "User",
                 icon: "💞",
-            }).catch(() => {});
+            }).catch(() => { });
             createNotification({
                 userId: likedUserId,
                 type: "match",
@@ -200,7 +200,7 @@ router.post("/like", authenticateToken, async (req, res) => {
                 referenceId: userId,
                 referenceModel: "User",
                 icon: "💞",
-            }).catch(() => {});
+            }).catch(() => { });
         } else {
             createNotification({
                 userId: likedUserId,
@@ -211,7 +211,7 @@ router.post("/like", authenticateToken, async (req, res) => {
                 referenceModel: "User",
                 icon: "❤️",
                 metadata: { fromUserId: userId },
-            }).catch(() => {});
+            }).catch(() => { });
         }
 
         res.json({
@@ -222,7 +222,17 @@ router.post("/like", authenticateToken, async (req, res) => {
         });
     } catch (err) {
         console.error("[Like]", err);
-        res.status(500).json({ success: false, message: "Failed to like user" });
+        // Duplicate key — the record already exists (race condition). Treat as success.
+        if (err.code === 11000) {
+            const existing = await Match.findOne({ userId: req.user.userId, matchedUserId: req.body.likedUserId });
+            const isMatch = existing?.status === "matched";
+            return res.json({
+                success: true,
+                isMatch,
+                message: isMatch ? "It's a match! 💕" : "Already liked!",
+            });
+        }
+        res.status(500).json({ success: false, message: err.message || "Failed to like user" });
     }
 });
 
@@ -283,7 +293,7 @@ router.post("/superlike", authenticateToken, async (req, res) => {
                 referenceId: likedUserId,
                 referenceModel: "User",
                 icon: "💞",
-            }).catch(() => {});
+            }).catch(() => { });
             createNotification({
                 userId: likedUserId,
                 type: "match",
@@ -292,7 +302,7 @@ router.post("/superlike", authenticateToken, async (req, res) => {
                 referenceId: userId,
                 referenceModel: "User",
                 icon: "💞",
-            }).catch(() => {});
+            }).catch(() => { });
         } else {
             createNotification({
                 userId: likedUserId,
@@ -303,7 +313,7 @@ router.post("/superlike", authenticateToken, async (req, res) => {
                 referenceModel: "User",
                 icon: "⭐",
                 metadata: { fromUserId: userId, isSuperLike: true },
-            }).catch(() => {});
+            }).catch(() => { });
         }
 
         res.json({
@@ -315,7 +325,12 @@ router.post("/superlike", authenticateToken, async (req, res) => {
         });
     } catch (err) {
         console.error("[SuperLike]", err);
-        res.status(500).json({ success: false, message: "Failed to super-like" });
+        if (err.code === 11000) {
+            const existing = await Match.findOne({ userId: req.user.userId, matchedUserId: req.body.likedUserId });
+            const isMatch = existing?.status === "matched";
+            return res.json({ success: true, isMatch, superLike: true, message: isMatch ? "It's a match! 💕" : "Already liked!" });
+        }
+        res.status(500).json({ success: false, message: err.message || "Failed to super-like" });
     }
 });
 
@@ -335,7 +350,11 @@ router.post("/pass", authenticateToken, async (req, res) => {
         await match.save();
         res.json({ success: true, message: "Passed" });
     } catch (err) {
-        res.status(500).json({ success: false, message: "Failed to pass" });
+        console.error("[Pass]", err);
+        if (err.code === 11000) {
+            return res.json({ success: true, message: "Already passed" });
+        }
+        res.status(500).json({ success: false, message: err.message || "Failed to pass" });
     }
 });
 

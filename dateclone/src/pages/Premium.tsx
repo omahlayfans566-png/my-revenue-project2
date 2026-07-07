@@ -68,14 +68,23 @@ const Premium = () => {
             const res = await premiumAPI.initializePaystack(plan.id, plan.durationDays, isYearly);
             const { reference, amount, email, metadata } = res.data;
 
+            // Store the pending plan so the callback page knows which plan to verify
+            sessionStorage.setItem("pending_payment", JSON.stringify({
+                plan: plan.id,
+                durationDays: plan.durationDays,
+                isYearly,
+                reference,
+            }));
+
             initializePaystackPayment({
                 key: PAYSTACK_PUBLIC_KEY,
                 email,
                 amount,
                 ref: reference,
+                callbackUrl: res.data.callbackUrl,
                 metadata: { ...metadata, isYearly },
                 callback: async (response) => {
-                    toast.success("Payment successful! Activating premium…");
+                    toast.success("Payment received! Activating premium…");
                     try {
                         const verifyRes = await premiumAPI.verifyPaystack(
                             response.reference,
@@ -86,6 +95,7 @@ const Premium = () => {
                         );
                         if (verifyRes.success) {
                             toast.success(`✨ ${verifyRes.message}`);
+                            sessionStorage.removeItem("pending_payment");
                             await refreshUser();
                             loadStatus();
                             loadAnalytics();
@@ -97,11 +107,13 @@ const Premium = () => {
                 },
                 onClose: () => {
                     toast("Payment cancelled", { icon: "ℹ️" });
+                    sessionStorage.removeItem("pending_payment");
                     setLoading(false);
                 },
             });
         } catch (err: any) {
             toast.error(err.message || "Failed to initialize payment");
+            sessionStorage.removeItem("pending_payment");
             setLoading(false);
         }
     };

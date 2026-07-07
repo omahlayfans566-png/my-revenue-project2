@@ -45,6 +45,10 @@ router.post("/initialize-paystack", authenticateToken, async (req, res) => {
         const amount = plan.price;
         const reference = `PAY-${Date.now()}-${crypto.randomBytes(8).toString("hex")}`;
 
+        // Callback URL for redirect mode (Paystack sends user here after payment)
+        const callbackUrl = process.env.PAYSTACK_CALLBACK_URL
+            || `${process.env.FRONTEND_URL || "https://dateclone.online"}/payment/callback`;
+
         // Create pending payment record
         const payment = new Payment({
             userId: user._id,
@@ -68,6 +72,7 @@ router.post("/initialize-paystack", authenticateToken, async (req, res) => {
                 plan: planId,
                 durationDays: plan.durationDays,
                 isYearly,
+                callbackUrl,
                 metadata: {
                     userId: user._id.toString(),
                     tier: planId,
@@ -96,44 +101,84 @@ router.post("/verify-paystack", authenticateToken, async (req, res) => {
         const plan = planSource[planId];
         if (!plan) return res.status(400).json({ success: false, message: "Invalid plan" });
 
-        // Verify with Paystack API
+        // ── Duplicate-verification guard ──────────────────────────────────────
+        // If this reference was already verified (status=success), return the
+        // existing subscription info instead of re-activating.
+        const existingPayment = await Payment.findOne({ paystackReference: ref });
+        if (existingPayment && existingPayment.status === "success") {
+            console.log(`[Premium/Verify] Reference ${ref} already verified — returning existing subscription`);
+            const user = await User.findById(req.user.userId).select("isPremium premiumTier premiumExpires");
+            return res.json({
+                success: true,
+                alreadyVerified: true,
+                message: `${planId.charAt(0).toUpperCase() + planId.slice(1)} plan is already active!`,
+                user: {
+                    _id: user._id,
+                    isPremium: user.isPremium,
+                    premiumTier: user.premiumTier,
+                    premiumExpires: user.premiumExpires,
+                },
+            });
+        }
+
+        // ── Verify with Paystack API ───────────────────────────────────────────
         const secretKey = process.env.PAYSTACK_SECRET_KEY;
-        if (!secretKey) {
-            // Fallback: trust the frontend verification (dev mode)
+        const isPlaceholderKey = !secretKey || secretKey.startsWith("sk_test_xxx");
+
+        if (isPlaceholderKey) {
+            // Dev mode — no real Paystack key configured, trust frontend
+            console.warn("[Premium/Verify] PAYSTACK_SECRET_KEY not configured — activating in dev mode");
             return await activatePremium(req, res, planId, plan.durationDays, ref, isYearly);
         }
 
         try {
             const verifyRes = await fetch(
-                `https://api.paystack.co/transaction/verify/${ref}`,
+                `https://api.paystack.co/transaction/verify/${encodeURIComponent(ref)}`,
                 { headers: { Authorization: `Bearer ${secretKey}` } }
             );
             const verifyData = await verifyRes.json();
 
-            if (!verifyData.status || verifyData.data.status !== "success") {
-                return res.status(400).json({ success: false, message: "Payment verification failed" });
+            if (!verifyData.status || verifyData.data?.status !== "success") {
+                const paystackMsg = verifyData.message || verifyData.data?.gateway_response || "Payment not completed";
+                return res.status(400).json({
+                    success: false,
+                    message: `Payment verification failed: ${paystackMsg}`,
+                });
             }
 
-            // Update payment record
+            // Confirm amount matches (fraud prevention)
+            const expectedAmount = plan.price * 100; // kobo
+            const paidAmount = verifyData.data.amount;
+            if (paidAmount < expectedAmount) {
+                console.warn(`[Premium/Verify] Amount mismatch: expected ${expectedAmount}, got ${paidAmount}`);
+                return res.status(400).json({
+                    success: false,
+                    message: "Payment amount does not match the plan price. Contact support.",
+                });
+            }
+
+            // Update payment record with Paystack transaction data
             await Payment.findOneAndUpdate(
                 { paystackReference: ref },
-                {
-                    status: "success",
-                    paystackTransactionData: verifyData.data,
-                }
+                { status: "success", paystackTransactionData: verifyData.data },
+                { upsert: false }
             );
 
-            await activatePremium(req, res, planId, plan.durationDays, ref, isYearly);
+            return await activatePremium(req, res, planId, plan.durationDays, ref, isYearly);
         } catch (fetchErr) {
             console.error("[Premium/Verify] Paystack API error:", fetchErr.message);
+            // In production, don't activate on a failed Paystack check
             if (process.env.NODE_ENV !== "production") {
                 return await activatePremium(req, res, planId, plan.durationDays, ref, isYearly);
             }
-            res.status(502).json({ success: false, message: "Payment verification service unavailable" });
+            return res.status(502).json({
+                success: false,
+                message: "Could not reach Paystack to verify payment. Please try again in a moment.",
+            });
         }
     } catch (err) {
         console.error("[Premium/Verify]", err);
-        res.status(500).json({ success: false, message: "Verification failed" });
+        res.status(500).json({ success: false, message: "Verification failed. Please contact support." });
     }
 });
 

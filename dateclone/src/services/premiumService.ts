@@ -226,6 +226,7 @@ export interface PaystackConfig {
   email: string;
   amount: number; // in kobo (multiply NGN by 100)
   ref: string;
+  callbackUrl?: string;
   metadata: {
     userId: string;
     tier: PremiumTier;
@@ -247,6 +248,8 @@ export const initializePaystackPayment = (config: PaystackConfig): void => {
     email: config.email,
     amount: config.amount,
     ref: config.ref,
+    // callback_url enables Paystack redirect mode (used when popup is blocked)
+    callback_url: config.callbackUrl,
     metadata: config.metadata,
     callback: config.callback,
     onClose: config.onClose,
