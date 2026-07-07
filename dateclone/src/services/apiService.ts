@@ -518,6 +518,112 @@ export const adminAPI = {
             method: "POST",
             body: JSON.stringify({ to }),
         }),
+
+    // Analytics
+    getDetailedAnalytics: async () => apiCall("/admin/analytics/detailed"),
+
+    // Revenue
+    getRevenue: async () => apiCall("/admin/revenue"),
+
+    // Permanent delete
+    permanentDeleteUser: async (userId: string) =>
+        apiCall(`/admin/users/${userId}/permanent`, { method: "DELETE" }),
+
+    // Restore user
+    restoreUser: async (userId: string) =>
+        apiCall(`/admin/users/${userId}/restore`, { method: "POST" }),
+
+    // Deleted users
+    getDeletedUsers: async (params: Record<string, string | number> = {}) => {
+        const queryParams = new URLSearchParams();
+        Object.entries(params).forEach(([key, value]) => {
+            if (value) queryParams.set(key, String(value));
+        });
+        return apiCall(`/admin/users/deleted/list${queryParams.toString() ? `?${queryParams.toString()}` : ""}`);
+    },
+
+    // Chat moderation
+    getChatMessages: async (params: Record<string, string | number> = {}) => {
+        const queryParams = new URLSearchParams();
+        Object.entries(params).forEach(([key, value]) => {
+            if (value) queryParams.set(key, String(value));
+        });
+        return apiCall(`/admin/chat/messages${queryParams.toString() ? `?${queryParams.toString()}` : ""}`);
+    },
+
+    deleteChatMessage: async (messageId: string, reason: string = "") =>
+        apiCall(`/admin/chat/messages/${messageId}`, {
+            method: "DELETE",
+            body: JSON.stringify({ reason }),
+        }),
+
+    warnChatUser: async (messageId: string, reason: string = "") =>
+        apiCall(`/admin/chat/messages/${messageId}/warn`, {
+            method: "POST",
+            body: JSON.stringify({ reason }),
+        }),
+
+    // Image moderation
+    getFlaggedPhotos: async (params: Record<string, string | number> = {}) => {
+        const queryParams = new URLSearchParams();
+        Object.entries(params).forEach(([key, value]) => {
+            if (value) queryParams.set(key, String(value));
+        });
+        return apiCall(`/admin/images/flagged${queryParams.toString() ? `?${queryParams.toString()}` : ""}`);
+    },
+
+    removePhoto: async (userId: string, photoIndex: number, reason: string = "") =>
+        apiCall(`/admin/images/${userId}/${photoIndex}`, {
+            method: "DELETE",
+            body: JSON.stringify({ reason }),
+        }),
+
+    flagUserPhotos: async (userId: string, reason: string = "") =>
+        apiCall(`/admin/images/${userId}/flag`, {
+            method: "POST",
+            body: JSON.stringify({ reason }),
+        }),
+
+    // Push notifications
+    sendPushNotification: async (data: Record<string, any>) =>
+        apiCall("/admin/push", {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+
+    // Admin roles & permissions
+    getRoles: async () => apiCall("/admin/roles"),
+
+    updateRolePermissions: async (role: string, permissions: string[]) =>
+        apiCall(`/admin/roles/${role}`, {
+            method: "PUT",
+            body: JSON.stringify({ permissions }),
+        }),
+
+    getRolePermissions: async (role: string) =>
+        apiCall(`/admin/roles/${role}/permissions`),
+
+    // Profile moderation
+    getFlaggedProfiles: async (params: Record<string, string | number> = {}) => {
+        const queryParams = new URLSearchParams();
+        Object.entries(params).forEach(([key, value]) => {
+            if (value) queryParams.set(key, String(value));
+        });
+        return apiCall(`/admin/profiles/flagged${queryParams.toString() ? `?${queryParams.toString()}` : ""}`);
+    },
+
+    moderateProfile: async (userId: string, data: Record<string, any>) =>
+        apiCall(`/admin/profiles/${userId}`, {
+            method: "PATCH",
+            body: JSON.stringify(data),
+        }),
+
+    // Broadcast
+    broadcastAnnouncement: async (data: Record<string, any>) =>
+        apiCall("/admin/broadcast", {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
 };
 
 // ============================================

@@ -139,7 +139,8 @@ router.post("/verify-paystack", authenticateToken, async (req, res) => {
 
 // ─── POST /paystack-webhook ────────────────────────────────────────────────────
 // Paystack sends webhook events here for subscription charges, recurring payments
-router.post("/paystack-webhook", express.raw({ type: "application/json" }), async (req, res) => {
+// Body is parsed as raw by server.js BEFORE this route is reached
+router.post("/paystack-webhook", async (req, res) => {
     try {
         // Verify webhook signature
         const secretKey = process.env.PAYSTACK_SECRET_KEY;
@@ -148,9 +149,11 @@ router.post("/paystack-webhook", express.raw({ type: "application/json" }), asyn
             return res.status(200).json({ status: "skipped" });
         }
 
+        // req.body is a Buffer from express.raw() - convert to string for HMAC
+        const rawBody = req.body instanceof Buffer ? req.body.toString() : JSON.stringify(req.body);
         const hash = crypto
             .createHmac("sha512", secretKey)
-            .update(JSON.stringify(req.body))
+            .update(rawBody)
             .digest("hex");
 
         if (hash !== req.headers["x-paystack-signature"]) {
@@ -158,7 +161,7 @@ router.post("/paystack-webhook", express.raw({ type: "application/json" }), asyn
             return res.status(401).json({ status: "invalid signature" });
         }
 
-        const event = req.body;
+        const event = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
         console.log("[Webhook] Received event:", event.event);
 
         // Handle different event types

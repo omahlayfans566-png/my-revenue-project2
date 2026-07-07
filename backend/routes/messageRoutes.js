@@ -92,10 +92,8 @@ router.post("/send", authenticateToken, async (req, res) => {
             metadata: { fromUserId: userId, conversationId: userId },
         }).catch(() => { });
 
-        // Emit real-time notification
-        if (global.io) {
-            global.io.to(`user:${toUserId}`).emit("new_message", message);
-        }
+        // Note: Real-time emission is handled by the socket.io send_message handler in server.js
+        // This REST endpoint is for fallback when socket is disconnected
 
         // Mark as delivered if recipient is online
         const recipientOnline = global.onlineUsers?.has(toUserId);
@@ -103,6 +101,15 @@ router.post("/send", authenticateToken, async (req, res) => {
             message.isDelivered = true;
             message.deliveredAt = new Date();
             await message.save();
+        }
+
+        // Only emit via socket if the message was sent via REST (not socket)
+        if (global.io && !req.headers["x-socket-id"]) {
+            const populated = await Message.findById(message._id)
+                .populate("fromUserId", "firstName lastName profilePicture")
+                .populate("toUserId", "firstName lastName profilePicture")
+                .lean();
+            global.io.to(`user:${toUserId}`).emit("new_message", populated);
         }
 
         const populated = await Message.findById(message._id)

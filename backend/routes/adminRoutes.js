@@ -22,6 +22,7 @@ import {
     PERMISSIONS,
     ROLE_PERMISSIONS,
     getRolePermissions,
+    updateRolePermissions,
 } from "../services/adminService.js";
 
 const router = express.Router();
@@ -981,7 +982,463 @@ router.get("/analytics", authorize("admin", "super_admin"), async (req, res) => 
     }
 });
 
-export default router;
+// ============================================================================
+// ENHANCED ANALYTICS (daily/weekly/monthly)
+// ============================================================================
+
+// GET /admin/analytics/detailed — detailed user analytics
+router.get("/analytics/detailed", authorize("admin", "super_admin"), async (req, res) => {
+    try {
+        const analytics = await getUserAnalytics();
+        await logAction(req.user.userId, "view_detailed_analytics", "system", null, {}, req);
+        return res.json({ success: true, analytics });
+    } catch (err) {
+        console.error("[Admin Detailed Analytics]", err);
+        return res.status(500).json({ success: false, message: "Failed to fetch detailed analytics." });
+    }
+});
+
+// ============================================================================
+// REVENUE DASHBOARD
+// ============================================================================
+
+// GET /admin/revenue — detailed revenue analytics
+router.get("/revenue", authorize("admin", "super_admin"), async (req, res) => {
+    try {
+        const revenue = await getRevenueAnalytics();
+        await logAction(req.user.userId, "view_revenue", "system", null, {}, req);
+        return res.json({ success: true, revenue });
+    } catch (err) {
+        console.error("[Admin Revenue]", err);
+        return res.status(500).json({ success: false, message: "Failed to fetch revenue data." });
+    }
+});
+
+// ============================================================================
+// PERMANENT DELETE & RESTORE ACCOUNTS
+// ============================================================================
+
+// DELETE /admin/users/:id/permanent — permanently delete a user (super_admin only)
+router.delete("/users/:id/permanent", authorize("super_admin"), async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ success: false, message: "Invalid user ID." });
+        }
+
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found." });
+        }
+
+        if (user.role === "super_admin" && req.params.id !== req.user.userId) {
+            return res.status(403).json({ success: false, message: "Cannot delete another super admin." });
+        }
+
+        // Permanently delete from database
+        await User.findByIdAndDelete(req.params.id);
+
+        await logAction(
+            req.user.userId,
+            "permanent_delete_user",
+            "user",
+            req.params.id,
+            { targetEmail: user.email, targetUsername: user.username },
+            req
+        );
+
+        return res.json({ success: true, message: "User permanently deleted." });
+    } catch (err) {
+        console.error("[Admin Permanent Delete]", err);
+        return res.status(500).json({ success: false, message: "Failed to permanently delete user." });
+    }
+});
+
+// POST /admin/users/:id/restore — restore a soft-deleted user account
+router.post("/users/:id/restore", authorize("admin", "super_admin"), async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ success: false, message: "Invalid user ID." });
+        }
+
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found." });
+        }
+
+        if (!user.deletedAt) {
+            return res.status(400).json({ success: false, message: "User is not deleted." });
+        }
+
+        // Restore the account
+        user.deletedAt = undefined;
+        user.deletedBy = undefined;
+        user.isActive = true;
+        await user.save();
+
+        await logAction(
+            req.user.userId,
+            "restore_user",
+            "user",
+            user._id,
+            { targetEmail: user.email },
+            req
+        );
+
+        return res.json({ success: true, message: "User account restored." });
+    } catch (err) {
+        console.error("[Admin Restore User]", err);
+        return res.status(500).json({ success: false, message: "Failed to restore user." });
+    }
+});
+
+// GET /admin/users/deleted — list soft-deleted users
+router.get("/users/deleted/list", authorize("admin", "super_admin"), async (req, res) => {
+    try {
+        const { page = 1, limit = 20 } = req.query;
+        const query = { deletedAt: { $exists: true } };
+
+        const total = await User.countDocuments(query);
+        const users = await User.find(query)
+            .select("firstName lastName email username deletedAt deletedBy isActive")
+            .populate("deletedBy", "firstName lastName email")
+            .sort("-deletedAt")
+            .skip((parseInt(page) - 1) * parseInt(limit))
+            .limit(parseInt(limit));
+
+        return res.json({
+            success: true,
+            users,
+            pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) },
+        });
+    } catch (err) {
+        console.error("[Admin Deleted Users]", err);
+        return res.status(500).json({ success: false, message: "Failed to fetch deleted users." });
+    }
+});
+
+// ============================================================================
+// CHAT MODERATION
+// ============================================================================
+
+// GET /admin/chat/messages — list all messages for moderation
+router.get("/chat/messages", authorize("moderator", "admin", "super_admin"), async (req, res) => {
+    try {
+        const { page = 1, limit = 50, search = "", userId = "" } = req.query;
+        const result = await getChatMessages({ page: parseInt(page), limit: parseInt(limit), search, userId });
+        return res.json({ success: true, ...result });
+    } catch (err) {
+        console.error("[Admin Chat Messages]", err);
+        return res.status(500).json({ success: false, message: "Failed to fetch chat messages." });
+    }
+});
+
+// DELETE /admin/chat/messages/:id — delete a message
+router.delete("/chat/messages/:id", authorize("moderator", "admin", "super_admin"), async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ success: false, message: "Invalid message ID." });
+        }
+        const { reason } = req.body;
+        await moderateMessage(req.params.id, "delete", req.user.userId, reason || "Moderator action");
+        await logAction(req.user.userId, "moderate_chat_delete", "content", req.params.id, { reason }, req);
+        return res.json({ success: true, message: "Message deleted." });
+    } catch (err) {
+        console.error("[Admin Chat Delete]", err);
+        return res.status(500).json({ success: false, message: err.message || "Failed to delete message." });
+    }
+});
+
+// POST /admin/chat/messages/:id/warn — warn a user about a message
+router.post("/chat/messages/:id/warn", authorize("moderator", "admin", "super_admin"), async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ success: false, message: "Invalid message ID." });
+        }
+        const { reason } = req.body;
+        await moderateMessage(req.params.id, "warn", req.user.userId, reason || "Inappropriate content");
+        await logAction(req.user.userId, "moderate_chat_warn", "content", req.params.id, { reason }, req);
+        return res.json({ success: true, message: "Warning sent to user." });
+    } catch (err) {
+        console.error("[Admin Chat Warn]", err);
+        return res.status(500).json({ success: false, message: err.message || "Failed to warn user." });
+    }
+});
+
+// ============================================================================
+// IMAGE MODERATION
+// ============================================================================
+
+// GET /admin/images/flagged — list users with flagged photos
+router.get("/images/flagged", authorize("moderator", "admin", "super_admin"), async (req, res) => {
+    try {
+        const { page = 1, limit = 20 } = req.query;
+        const result = await getFlaggedPhotos({ page: parseInt(page), limit: parseInt(limit) });
+        return res.json({ success: true, ...result });
+    } catch (err) {
+        console.error("[Admin Flagged Photos]", err);
+        return res.status(500).json({ success: false, message: "Failed to fetch flagged photos." });
+    }
+});
+
+// DELETE /admin/images/:userId/:photoIndex — remove a specific photo
+router.delete("/images/:userId/:photoIndex", authorize("moderator", "admin", "super_admin"), async (req, res) => {
+    try {
+        const { userId, photoIndex } = req.params;
+        const { reason } = req.body;
+        await moderatePhoto(userId, parseInt(photoIndex), "remove", req.user.userId, reason || "Inappropriate image");
+        await logAction(req.user.userId, "moderate_image_remove", "user", userId, { photoIndex, reason }, req);
+        return res.json({ success: true, message: "Photo removed." });
+    } catch (err) {
+        console.error("[Admin Remove Photo]", err);
+        return res.status(500).json({ success: false, message: err.message || "Failed to remove photo." });
+    }
+});
+
+// POST /admin/images/:userId/flag — flag all photos for review
+router.post("/images/:userId/flag", authorize("moderator", "admin", "super_admin"), async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { reason } = req.body;
+        await moderatePhoto(userId, -1, "flag_all", req.user.userId, reason || "Flagged for review");
+        await logAction(req.user.userId, "moderate_image_flag", "user", userId, { reason }, req);
+        return res.json({ success: true, message: "User photos flagged for review." });
+    } catch (err) {
+        console.error("[Admin Flag Photos]", err);
+        return res.status(500).json({ success: false, message: err.message || "Failed to flag photos." });
+    }
+});
+
+// ============================================================================
+// PUSH NOTIFICATIONS
+// ============================================================================
+
+// POST /admin/push — send push notification to users
+router.post("/push", authorize("admin", "super_admin"), async (req, res) => {
+    try {
+        const { title, message, audience = "all", targetUsers = [] } = req.body;
+        if (!message) {
+            return res.status(400).json({ success: false, message: "Message is required." });
+        }
+
+        const results = await sendPushNotification({
+            title: title || "📢 Admin Announcement",
+            message,
+            audience,
+            targetUsers,
+            sentBy: req.user.userId,
+        });
+
+        await logAction(
+            req.user.userId,
+            "send_push_notification",
+            "system",
+            null,
+            { title, audience, sent: results.sent, failed: results.failed },
+            req
+        );
+
+        return res.json({
+            success: true,
+            message: `Push notification sent to ${results.sent} users (${results.failed} failed).`,
+            results,
+        });
+    } catch (err) {
+        console.error("[Admin Push Notification]", err);
+        return res.status(500).json({ success: false, message: "Failed to send push notification." });
+    }
+});
+
+// ============================================================================
+// ADMIN ROLES & PERMISSION SYSTEM
+// ============================================================================
+
+// GET /admin/roles — list all roles and their permissions
+router.get("/roles", authorize("super_admin"), async (req, res) => {
+    try {
+        const roles = {};
+        for (const [role, permissions] of Object.entries(ROLE_PERMISSIONS)) {
+            roles[role] = permissions;
+        }
+        return res.json({ success: true, roles, allPermissions: PERMISSIONS });
+    } catch (err) {
+        console.error("[Admin Roles]", err);
+        return res.status(500).json({ success: false, message: "Failed to fetch roles." });
+    }
+});
+
+// PUT /admin/roles/:role — update permissions for a role (super_admin only)
+router.put("/roles/:role", authorize("super_admin"), async (req, res) => {
+    try {
+        const { role } = req.params;
+        const { permissions } = req.body;
+
+        const validRoles = ["user", "moderator", "admin", "super_admin"];
+        if (!validRoles.includes(role)) {
+            return res.status(400).json({ success: false, message: "Invalid role." });
+        }
+
+        if (!Array.isArray(permissions)) {
+            return res.status(400).json({ success: false, message: "Permissions must be an array." });
+        }
+
+        // Validate permissions against known list
+        const validPermissions = Object.values(PERMISSIONS);
+        const invalidPerms = permissions.filter(p => !validPermissions.includes(p));
+        if (invalidPerms.length > 0) {
+            return res.status(400).json({ success: false, message: `Invalid permissions: ${invalidPerms.join(", ")}` });
+        }
+
+        const updatedRoles = await updateRolePermissions(role, permissions);
+
+        await logAction(
+            req.user.userId,
+            "update_role_permissions",
+            "system",
+            null,
+            { role, permissionsCount: permissions.length },
+            req
+        );
+
+        return res.json({ success: true, message: `Permissions updated for ${role}.`, roles: updatedRoles });
+    } catch (err) {
+        console.error("[Admin Update Roles]", err);
+        return res.status(500).json({ success: false, message: "Failed to update role permissions." });
+    }
+});
+
+// GET /admin/roles/:role/permissions — get permissions for a specific role
+router.get("/roles/:role/permissions", authorize("admin", "super_admin"), async (req, res) => {
+    try {
+        const { role } = req.params;
+        const permissions = getRolePermissions(role);
+        return res.json({ success: true, role, permissions });
+    } catch (err) {
+        console.error("[Admin Role Permissions]", err);
+        return res.status(500).json({ success: false, message: "Failed to fetch role permissions." });
+    }
+});
+
+// ============================================================================
+// PROFILE MODERATION
+// ============================================================================
+
+// GET /admin/profiles/flagged — list profiles flagged for review
+router.get("/profiles/flagged", authorize("moderator", "admin", "super_admin"), async (req, res) => {
+    try {
+        const { page = 1, limit = 20 } = req.query;
+        const query = {
+            $or: [
+                { flaggedForReview: true },
+                { reportCount: { $gte: 1 } },
+            ],
+            deletedAt: { $exists: false },
+        };
+
+        const total = await User.countDocuments(query);
+        const users = await User.find(query)
+            .select("firstName lastName email username profilePicture aboutMe bio occupation reportCount flaggedForReview isBanned isActive createdAt")
+            .sort("-reportCount")
+            .skip((parseInt(page) - 1) * parseInt(limit))
+            .limit(parseInt(limit));
+
+        return res.json({
+            success: true,
+            users,
+            pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) },
+        });
+    } catch (err) {
+        console.error("[Admin Flagged Profiles]", err);
+        return res.status(500).json({ success: false, message: "Failed to fetch flagged profiles." });
+    }
+});
+
+// PATCH /admin/profiles/:id — moderate a user's profile (edit bio, about, etc.)
+router.patch("/profiles/:id", authorize("moderator", "admin", "super_admin"), async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ success: false, message: "Invalid user ID." });
+        }
+
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: "User not found." });
+
+        const allowed = ["aboutMe", "bio", "occupation", "flaggedForReview", "reportCount"];
+        const updates = {};
+        for (const key of allowed) {
+            if (req.body[key] !== undefined) updates[key] = req.body[key];
+        }
+
+        Object.assign(user, updates);
+        await user.save();
+
+        await logAction(
+            req.user.userId,
+            "moderate_profile",
+            "user",
+            user._id,
+            { fields: Object.keys(updates), targetEmail: user.email },
+            req
+        );
+
+        return res.json({ success: true, message: "Profile moderated.", user });
+    } catch (err) {
+        console.error("[Admin Moderate Profile]", err);
+        return res.status(500).json({ success: false, message: "Failed to moderate profile." });
+    }
+});
+
+// ============================================================================
+// BROADCAST ANNOUNCEMENTS (via push notifications)
+// ============================================================================
+
+// POST /admin/broadcast — broadcast an announcement to all users
+router.post("/broadcast", authorize("admin", "super_admin"), async (req, res) => {
+    try {
+        const { title, content, type = "info" } = req.body;
+        if (!title || !content) {
+            return res.status(400).json({ success: false, message: "Title and content are required." });
+        }
+
+        // Create announcement record
+        const announcement = new Announcement({
+            title,
+            content,
+            type,
+            audience: "all",
+            sentBy: req.user.userId,
+            sentAt: new Date(),
+            status: "sent",
+        });
+        await announcement.save();
+
+        // Send push notifications to all users
+        const results = await sendPushNotification({
+            title: `📢 ${title}`,
+            message: content,
+            audience: "all",
+            sentBy: req.user.userId,
+        });
+
+        await logAction(
+            req.user.userId,
+            "broadcast_announcement",
+            "announcement",
+            announcement._id,
+            { title, type, pushSent: results.sent, pushFailed: results.failed },
+            req
+        );
+
+        return res.json({
+            success: true,
+            message: `Announcement broadcast to ${results.sent} users.`,
+            announcement,
+            pushResults: results,
+        });
+    } catch (err) {
+        console.error("[Admin Broadcast]", err);
+        return res.status(500).json({ success: false, message: "Failed to broadcast announcement." });
+    }
+});
 
 // ============================================================================
 // EMAIL DELIVERY STATUS
@@ -1110,3 +1567,5 @@ router.post("/email/test", authorize("admin", "super_admin"), async (req, res) =
         });
     }
 });
+
+export default router;

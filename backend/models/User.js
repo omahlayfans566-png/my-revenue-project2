@@ -45,6 +45,9 @@ const userSchema = new mongoose.Schema(
         },
         languages: [String],
 
+        // ── Physical attributes ───────────────────────────────────────────────
+        height: { type: Number }, // in centimeters
+
         // ── Interests & Lifestyle ─────────────────────────────────────────────
         interests: [String],
         smoking: { type: String, enum: ["never", "socially", "occasionally", "regularly"] },

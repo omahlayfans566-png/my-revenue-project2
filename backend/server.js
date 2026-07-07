@@ -20,9 +20,11 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import discoveryRoutes from "./routes/discoveryRoutes.js";
 import searchRoutes from "./routes/searchRoutes.js";
+import advancedFeaturesRoutes from "./routes/advancedFeaturesRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { verifyEmailService } from "./services/emailService.js";
 import { requestLogger } from "./middleware/requestLogger.js";
+import { performanceMiddleware } from "./middleware/performanceMonitor.js";
 import { User } from "./models/User.js";
 import { Message } from "./models/Message.js";
 
@@ -180,15 +182,30 @@ io.on("connection", (socket) => {
         if (!socket.userId || !toUserId) return;
         try {
             const recipientOnline = onlineUsers.has(toUserId);
+
+            // Persist message to database
+            const message = new Message({
+                fromUserId: socket.userId,
+                toUserId,
+                content: content || "",
+                image: image || null,
+                messageType: image ? "image" : "text",
+                isDelivered: recipientOnline,
+                deliveredAt: recipientOnline ? new Date() : null,
+            });
+            await message.save();
+
             const msg = {
+                _id: message._id,
                 fromUserId: socket.userId,
                 toUserId,
                 content: content || "",
                 image: image || null,
                 tempId,
-                createdAt: new Date().toISOString(),
+                createdAt: message.createdAt.toISOString(),
                 isRead: false,
                 isDelivered: recipientOnline,
+                messageType: image ? "image" : "text",
             };
 
             // Emit to recipient
@@ -202,11 +219,11 @@ io.on("connection", (socket) => {
                 });
             }
 
-            socket.emit("message_sent", { tempId, createdAt: msg.createdAt });
+            socket.emit("message_sent", { tempId, _id: message._id, createdAt: msg.createdAt });
 
             // Update unread count for recipient
             const unreadCount = await getUnreadMessageCount(toUserId);
-            io.to(`user:${toUserId}`).emit("unread_message_count", { count: unreadCount + 1 });
+            io.to(`user:${toUserId}`).emit("unread_message_count", { count: unreadCount });
         } catch (err) {
             console.error("[Socket] send_message error:", err.message);
             socket.emit("message_error", { tempId, error: "Failed to send message" });
@@ -349,20 +366,17 @@ app.use(helmet({
     crossOriginOpenerPolicy: false,
 }));
 
-// IMPORTANT: Webhook route must be BEFORE express.json() to receive raw body
-// The webhook route handles its own body parsing
-app.use("/api/premium/paystack-webhook", (req, res, next) => {
-    // This route is handled by premiumRoutes which uses express.raw()
-    next();
-}, (req, res, next) => {
-    // Skip JSON parsing for webhook - premiumRoutes handles it
-    if (req.path === "/api/premium/paystack-webhook") return;
-    next();
-});
+// ── Security & Input Processing Middleware ──────────────────────────────────
+import { xssProtection, securityHeaders } from "./middleware/securityMiddleware.js";
 
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
+// Webhook route must use raw body parser BEFORE express.json()
+app.use("/api/premium/paystack-webhook", express.raw({ type: "application/json", limit: "1mb" }));
+
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
+app.use(xssProtection);
 if (process.env.NODE_ENV !== "production") app.use(requestLogger);
+app.use(performanceMiddleware);
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 app.use("/api", rateLimit({ windowMs: 60000, max: 200, standardHeaders: true, legacyHeaders: false }));
@@ -379,6 +393,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/discover", discoveryRoutes);
 app.use("/api/search", searchRoutes);
+app.use("/api/advanced", advancedFeaturesRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {

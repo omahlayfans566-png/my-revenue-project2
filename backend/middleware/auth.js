@@ -13,6 +13,15 @@ export const generateToken = (userId, expiresIn = "7d") =>
 export const generateRefreshToken = (userId) =>
     jwt.sign({ userId, type: "refresh" }, JWT_REFRESH_SECRET, { expiresIn: "30d" });
 
+// ── Verify an access token (for WebSocket / internal use) ──────────────────────
+export const verifyToken = (token) => {
+    try {
+        return jwt.verify(token, JWT_SECRET);
+    } catch {
+        return null;
+    }
+};
+
 // ── Access token guard ────────────────────────────────────────────────────────
 export const authenticateToken = (req, res, next) => {
     const authHeader = req.headers["authorization"];
@@ -40,6 +49,18 @@ export const authenticateToken = (req, res, next) => {
             code: "TOKEN_INVALID",
         });
     }
+};
+
+// ── Optional auth - doesn't fail if no token, useful for public endpoints ─────
+export const optionalAuth = (req, _res, next) => {
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
+    if (token) {
+        try {
+            req.user = jwt.verify(token, JWT_SECRET);
+        } catch { /* silently ignore invalid tokens */ }
+    }
+    next();
 };
 
 // ── Refresh token guard ───────────────────────────────────────────────────────
