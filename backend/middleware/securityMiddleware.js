@@ -207,5 +207,5 @@ export default {
     sanitizeInput,
     validateEmail,
     validatePassword,
-    sanitizeHtml,
+    sanitizeHtml: escapeHtml,
 };

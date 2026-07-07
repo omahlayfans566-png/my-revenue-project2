@@ -6,7 +6,7 @@ const incognitoModeSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             required: true,
-            unique: true,
+            // unique index defined explicitly below
         },
         isEnabled: {
             type: Boolean,
@@ -23,7 +23,7 @@ const incognitoModeSchema = new mongoose.Schema(
     }
 );
 
-incognitoModeSchema.index({ userId: 1 });
+incognitoModeSchema.index({ userId: 1 }, { unique: true });
 incognitoModeSchema.index({ isEnabled: 1, expiresAt: 1 });
 
 export const IncognitoMode = mongoose.model("IncognitoMode", incognitoModeSchema);

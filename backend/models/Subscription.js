@@ -6,7 +6,7 @@ const subscriptionSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             required: true,
-            index: true,
+            // index defined via compound userId_1_status_1 below
         },
         plan: {
             type: String,

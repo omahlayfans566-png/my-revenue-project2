@@ -6,7 +6,7 @@ const paymentSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             required: true,
-            index: true,
+            // index is defined explicitly below — do not add index:true here
         },
         subscriptionId: {
             type: mongoose.Schema.Types.ObjectId,
@@ -24,8 +24,8 @@ const paymentSchema = new mongoose.Schema(
             enum: ["paystack", "stripe", "admin"],
             required: true,
         },
-        // Paystack
-        paystackReference: { type: String, unique: true, sparse: true },
+        // Paystack — index defined explicitly below, NOT inline (avoids duplicate index warning)
+        paystackReference: { type: String },
         paystackAccessCode: String,
         paystackTransactionData: mongoose.Schema.Types.Mixed,
         // Stripe

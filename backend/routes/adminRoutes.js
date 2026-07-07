@@ -66,24 +66,6 @@ const initializeSuperAdmin = async () => {
 // Run on import
 initializeSuperAdmin();
 
-// ── Helper: log admin actions ───────────────────────────────────────────
-const logAction = async (adminId, action, targetType = "other", targetId = null, details = {}, req = null) => {
-    try {
-        const log = new AdminLog({
-            admin: adminId,
-            action,
-            targetType,
-            targetId,
-            details,
-            ipAddress: req?.ip || req?.headers?.["x-forwarded-for"] || null,
-            userAgent: req?.headers?.["user-agent"] || null,
-        });
-        await log.save();
-    } catch (err) {
-        console.error("[AdminLog] Failed to log action:", err.message);
-    }
-};
-
 // ============================================================================
 // DASHBOARD STATISTICS
 // ============================================================================

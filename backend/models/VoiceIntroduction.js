@@ -6,7 +6,7 @@ const voiceIntroductionSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             required: true,
-            unique: true,
+            // unique index defined explicitly below
         },
         audioUrl: {
             type: String,
@@ -30,7 +30,7 @@ const voiceIntroductionSchema = new mongoose.Schema(
     }
 );
 
-voiceIntroductionSchema.index({ userId: 1 });
+voiceIntroductionSchema.index({ userId: 1 }, { unique: true });
 voiceIntroductionSchema.index({ isActive: 1 });
 
 export const VoiceIntroduction = mongoose.model("VoiceIntroduction", voiceIntroductionSchema);

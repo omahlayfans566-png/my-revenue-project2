@@ -5,7 +5,7 @@ import { computeProfileCompletion } from "../services/onboardingService.js";
 
 const router = express.Router();
 
-const PUBLIC_FIELDS = "-password -verificationToken -verificationTokenExpires";
+const PUBLIC_FIELDS = "-password -verificationToken -verificationTokenExpires -refreshTokens -passwordResetToken -passwordResetExpires";
 
 // ── GET /  (Members directory — MUST come before /:userId) ───────────────────
 router.get("/", async (req, res) => {
