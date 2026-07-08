@@ -17,6 +17,7 @@ import {
     sendPasswordResetEmail,
 } from "../services/emailService.js";
 import { onboardMember } from "../services/onboardingService.js";
+import { notifySuggestionsChanged } from "../services/suggestionService.js";
 
 const router = express.Router();
 const PUB_FIELDS =
@@ -342,7 +343,16 @@ router.post(
             });
             lap("response sent");
 
-            // ── Step 5: Send verification email in background ─────────────────
+            // ── Step 5: Notify all connected clients that a new user registered ──
+            // This triggers real-time suggestion updates for all online users
+            try {
+                const { emitUserRegistered } = await import("../server.js");
+                emitUserRegistered(newUser._id.toString());
+            } catch (e) {
+                // Socket may not be available yet
+            }
+
+            // ── Step 6: Send verification email in background ─────────────────
             // This runs AFTER the response has been sent — SMTP latency is invisible to the user.
             sendVerificationEmail(normalizedEmail, plainOtp).then(() => {
                 lap("background email sent");
@@ -390,6 +400,13 @@ router.post("/verify-otp", async (req, res) => {
                 success: false,
                 message: "Invalid or expired verification code.",
             });
+        }
+
+        // Notify all clients that a user completed their profile (became eligible)
+        try {
+            notifySuggestionsChanged();
+        } catch (e) {
+            // silent
         }
 
         return res.json({

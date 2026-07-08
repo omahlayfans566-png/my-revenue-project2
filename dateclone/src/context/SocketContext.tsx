@@ -16,6 +16,7 @@ interface SocketContextValue {
     markRead: (fromUserId: string) => void;
     requestUnreadCount: () => void;
     premiumStatus: { isPremium: boolean; premiumTier: string; premiumExpires: string | null } | null;
+    suggestionsVersion: number; // Incremented when suggestions should be refetched
 }
 
 const SocketContext = createContext<SocketContextValue | null>(null);
@@ -38,6 +39,12 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
     const [deliveredMessages, setDeliveredMessages] = useState<Map<string, string>>(new Map());
     const [unreadMessageCount, setUnreadMessageCount] = useState(0);
     const [premiumStatus, setPremiumStatus] = useState<{ isPremium: boolean; premiumTier: string; premiumExpires: string | null } | null>(null);
+    const [suggestionsVersion, setSuggestionsVersion] = useState(0);
+
+    // Increment suggestions version to trigger refetch
+    const triggerSuggestionsRefresh = useCallback(() => {
+        setSuggestionsVersion(prev => prev + 1);
+    }, []);
 
     useEffect(() => {
         if (!isAuthenticated || !user) {
@@ -72,6 +79,8 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
             newSocket.emit("user_online", { userId: user._id });
             // Request unread count on reconnect
             newSocket.emit("get_unread_counts");
+            // Refresh suggestions on reconnect
+            triggerSuggestionsRefresh();
         });
 
         newSocket.on("disconnect", (reason) => {
@@ -89,6 +98,8 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
             setConnected(true);
             newSocket.emit("user_online", { userId: user._id });
             newSocket.emit("get_unread_counts");
+            // Refresh suggestions on reconnect
+            triggerSuggestionsRefresh();
         });
 
         newSocket.on("reconnect_attempt", (attempt) => {
@@ -126,8 +137,33 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
         // ── premium_status_changed ────────────────────────────────────────────
         newSocket.on("premium_status_changed", (data: { isPremium: boolean; premiumTier: string; premiumExpires: string | null }) => {
             setPremiumStatus(data);
-            // Also update the user in AuthContext via refreshUser
-            // The AuthContext will pick up the change on next refresh
+        });
+
+        // ── like_status ──────────────────────────────────────────────────────────
+        newSocket.on("like_status", ({ targetUserId, liked, isMatch }: { targetUserId: string; liked: boolean; isMatch: boolean }) => {
+            console.log(`[Socket] like_status: ${targetUserId} liked=${liked} isMatch=${isMatch}`);
+            // Trigger a suggestion refresh so liked users update in real-time
+            triggerSuggestionsRefresh();
+        });
+
+        // ── Suggestion-related events: trigger refetch on ANY of these ────────
+        const suggestionEvents = [
+            "suggestions_updated",
+            "user_registered",
+            "profile_updated",
+            "profile_photo_uploaded",
+            "user_deleted",
+            "user_banned",
+            "user_unbanned",
+            "user_activated",
+            "profile_completed",
+        ];
+
+        suggestionEvents.forEach(event => {
+            newSocket.on(event, () => {
+                console.log(`[Socket] Received ${event} — refreshing suggestions`);
+                triggerSuggestionsRefresh();
+            });
         });
 
         return () => {
@@ -173,6 +209,7 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
             markRead,
             requestUnreadCount,
             premiumStatus,
+            suggestionsVersion,
         }}>
             {children}
         </SocketContext.Provider>

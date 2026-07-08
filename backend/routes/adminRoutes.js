@@ -24,6 +24,7 @@ import {
     getRolePermissions,
     updateRolePermissions,
 } from "../services/adminService.js";
+import { notifySuggestionsChanged } from "../services/suggestionService.js";
 
 const router = express.Router();
 
@@ -383,6 +384,9 @@ router.post("/users/:id/ban", authorize("admin", "super_admin"), async (req, res
             req
         );
 
+        // Notify all clients that a user was banned
+        notifySuggestionsChanged();
+
         return res.json({ success: true, message: "User banned." });
     } catch (err) {
         console.error("[Admin Ban]", err);
@@ -409,6 +413,9 @@ router.post("/users/:id/unban", authorize("admin", "super_admin"), async (req, r
         await user.save();
 
         await logAction(req.user.userId, "unban_user", "user", user._id, { targetEmail: user.email }, req);
+
+        // Notify all clients that a user was unbanned
+        notifySuggestionsChanged();
 
         return res.json({ success: true, message: "User unbanned." });
     } catch (err) {
@@ -447,6 +454,9 @@ router.delete("/users/:id", authorize("admin", "super_admin"), async (req, res) 
             { targetEmail: user.email },
             req
         );
+
+        // Notify all clients that a user was deleted
+        notifySuggestionsChanged();
 
         return res.json({ success: true, message: "User account deleted." });
     } catch (err) {
@@ -1065,6 +1075,9 @@ router.post("/users/:id/restore", authorize("admin", "super_admin"), async (req,
             { targetEmail: user.email },
             req
         );
+
+        // Notify all clients that a user was restored
+        notifySuggestionsChanged();
 
         return res.json({ success: true, message: "User account restored." });
     } catch (err) {

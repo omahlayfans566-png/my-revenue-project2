@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import AppNavbar from "../component/AppNavbar";
 import { useAuth } from "../context/AuthContext";
@@ -35,6 +35,9 @@ interface StatsData {
     unreadNotifications: number;
     memberCount: number;
 }
+
+// ─── Error states ─────────────────────────────────────────────────────────────
+type SuggestionError = "network" | "server" | null;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const getGreeting = (): string => {
@@ -88,34 +91,92 @@ const getTips = (user: any): { icon: string; text: string; to: string }[] => {
 const Dashboard = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
-    const { onlineUsers } = useSocket();
+    const { onlineUsers, suggestionsVersion } = useSocket();
 
     const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
     const [convs, setConvs] = useState<RecentConv[]>([]);
     const [stats, setStats] = useState<StatsData>({ matches: 0, unreadMessages: 0, unreadNotifications: 0, memberCount: 0 });
     const [loading, setLoading] = useState(true);
+    const [suggestionsLoading, setSuggestionsLoading] = useState(true);
     const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
     const [liking, setLiking] = useState<string | null>(null);
+    const [suggestionError, setSuggestionError] = useState<SuggestionError>(null);
+
+    // Request deduplication ref
+    const pendingRequestRef = useRef<AbortController | null>(null);
+    const mountedRef = useRef(true);
 
     const u = user as any;
     const initials = `${user?.firstName?.[0] ?? ""}${user?.lastName?.[0] ?? ""}`.toUpperCase();
     const completeness = user ? calcCompleteness(u) : 0;
     const tips = user ? getTips(u) : [];
 
+    // ── Fetch suggestions with deduplication ─────────────────────────────────
+    const fetchSuggestions = useCallback(async () => {
+        // Cancel any pending request
+        if (pendingRequestRef.current) {
+            pendingRequestRef.current.abort();
+        }
+
+        const controller = new AbortController();
+        pendingRequestRef.current = controller;
+        const signal = controller.signal;
+
+        setSuggestionsLoading(true);
+        setSuggestionError(null);
+
+        try {
+            // Use a custom fetch to support abort
+            const token = sessionStorage.getItem("authToken");
+            const API_BASE_URL = import.meta.env.VITE_API_URL || "https://dateclone-backend.onrender.com/api";
+            const response = await fetch(`${API_BASE_URL}/matches/suggestions`, {
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: token ? `Bearer ${token}` : "",
+                },
+                signal,
+            });
+
+            if (signal.aborted) return;
+
+            if (!response.ok) {
+                setSuggestionError("server");
+                setSuggestionsLoading(false);
+                return;
+            }
+
+            const data = await response.json();
+
+            if (signal.aborted) return;
+
+            if (data.success) {
+                setSuggestions((data.suggestions || []).slice(0, 6));
+                setSuggestionError(null);
+            } else {
+                setSuggestionError("server");
+            }
+        } catch (err: any) {
+            if (err?.name === "AbortError" || signal.aborted) return;
+            setSuggestionError("network");
+        } finally {
+            if (!signal.aborted) {
+                setSuggestionsLoading(false);
+                pendingRequestRef.current = null;
+            }
+        }
+    }, []);
+
     // ── Load all dashboard data in parallel ───────────────────────────────
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const [sugg, convRes, matchRes, notifRes, countRes] = await Promise.allSettled([
-                matchAPI.getSuggestions(),
+            const [convRes, matchRes, notifRes, countRes] = await Promise.allSettled([
                 messageAPI.getAllConversations(),
                 matchAPI.getMatches(),
                 notificationAPI.getUnreadCount(),
                 matchAPI.getMemberCount(),
             ]);
 
-            if (sugg.status === "fulfilled")
-                setSuggestions((sugg.value.suggestions || []).slice(0, 6));
             if (convRes.status === "fulfilled") {
                 const list: RecentConv[] = (convRes.value.conversations || []).slice(0, 4);
                 setConvs(list);
@@ -132,7 +193,25 @@ const Dashboard = () => {
         finally { setLoading(false); }
     }, []);
 
-    useEffect(() => { load(); }, [load]);
+    // ── Initial load: fetch suggestions + other data on mount ─────────────
+    useEffect(() => {
+        mountedRef.current = true;
+        fetchSuggestions();
+        load();
+        return () => {
+            mountedRef.current = false;
+            if (pendingRequestRef.current) {
+                pendingRequestRef.current.abort();
+            }
+        };
+    }, [fetchSuggestions, load]);
+
+    // ── React to socket suggestion events ─────────────────────────────────
+    useEffect(() => {
+        if (suggestionsVersion > 0) {
+            fetchSuggestions();
+        }
+    }, [suggestionsVersion, fetchSuggestions]);
 
     // ── Like from dashboard ────────────────────────────────────────────────
     const handleLike = async (uid: string) => {
@@ -141,8 +220,30 @@ const Dashboard = () => {
         try {
             await matchAPI.likeUser(uid);
             setLikedIds(prev => new Set([...prev, uid]));
-        } catch { /* silent */ }
+            // Optimistically remove the liked user from suggestions
+            setSuggestions(prev => prev.filter(s => s._id !== uid));
+        } catch (err: any) {
+            // Log the full error to console for debugging
+            console.error("[Dashboard Like] Error:", err);
+            // Display the actual backend error message
+            const message = err?.message || "Failed to like user";
+            // Show toast or alert with the real error
+            if (message.includes("already liked") || message.includes("Already liked")) {
+                // Already liked — still add to liked set so UI updates
+                setLikedIds(prev => new Set([...prev, uid]));
+            } else if (message.includes("yourself")) {
+                alert("You cannot like yourself!");
+            } else {
+                // Show descriptive error
+                alert(message);
+            }
+        }
         finally { setLiking(null); }
+    };
+
+    // ── Handle suggestion retry (network error) ────────────────────────────
+    const handleRetry = () => {
+        fetchSuggestions();
     };
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -230,7 +331,7 @@ const Dashboard = () => {
                                 <Link to="/discover" className="db-section-link">See all →</Link>
                             </div>
 
-                            {loading ? (
+                            {suggestionsLoading ? (
                                 <div className="db-suggestions-grid">
                                     {[...Array(6)].map((_, i) => (
                                         <div key={i} className="db-match-card db-match-card--skeleton">
@@ -239,6 +340,22 @@ const Dashboard = () => {
                                             <div className="skeleton db-match-sub-sk" />
                                         </div>
                                     ))}
+                                </div>
+                            ) : suggestionError === "network" ? (
+                                <div className="db-empty db-empty--error">
+                                    <span>🌐</span>
+                                    <p>Unable to load suggestions. Check your connection.</p>
+                                    <button className="btn btn-primary btn-sm" onClick={handleRetry}>
+                                        Try Again
+                                    </button>
+                                </div>
+                            ) : suggestionError === "server" ? (
+                                <div className="db-empty db-empty--error">
+                                    <span>⚠️</span>
+                                    <p>Something went wrong. Please try again later.</p>
+                                    <button className="btn btn-primary btn-sm" onClick={handleRetry}>
+                                        Retry
+                                    </button>
                                 </div>
                             ) : suggestions.length === 0 ? (
                                 <div className="db-empty">

@@ -130,6 +130,44 @@ const updateLastSeen = async (userId) => {
     }
 };
 
+// ── Emit suggestion-related events ────────────────────────────────────────────
+export const emitUserRegistered = (userId) => {
+    io.emit("user_registered", { userId, timestamp: new Date().toISOString() });
+    console.log(`[Socket] Emitted user_registered for ${userId}`);
+};
+
+export const emitProfileCompleted = (userId) => {
+    io.emit("profile_completed", { userId, timestamp: new Date().toISOString() });
+};
+
+export const emitProfileUpdated = (userId) => {
+    io.emit("profile_updated", { userId, timestamp: new Date().toISOString() });
+};
+
+export const emitProfilePhotoUploaded = (userId) => {
+    io.emit("profile_photo_uploaded", { userId, timestamp: new Date().toISOString() });
+};
+
+export const emitUserDeleted = (userId) => {
+    io.emit("user_deleted", { userId, timestamp: new Date().toISOString() });
+    io.emit("suggestions_updated", { timestamp: new Date().toISOString(), type: "user_deleted" });
+};
+
+export const emitUserBanned = (userId) => {
+    io.emit("user_banned", { userId, timestamp: new Date().toISOString() });
+    io.emit("suggestions_updated", { timestamp: new Date().toISOString(), type: "user_banned" });
+};
+
+export const emitUserUnbanned = (userId) => {
+    io.emit("user_unbanned", { userId, timestamp: new Date().toISOString() });
+    io.emit("suggestions_updated", { timestamp: new Date().toISOString(), type: "user_unbanned" });
+};
+
+export const emitUserActivated = (userId) => {
+    io.emit("user_activated", { userId, timestamp: new Date().toISOString() });
+    io.emit("suggestions_updated", { timestamp: new Date().toISOString(), type: "user_activated" });
+};
+
 // ── Socket connection handler ──────────────────────────────────────────────────
 io.on("connection", (socket) => {
     const userId = socket.userId;

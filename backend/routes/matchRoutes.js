@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import { Match } from "../models/Match.js";
 import { User } from "../models/User.js";
 import { authenticateToken } from "../middleware/auth.js";
@@ -9,14 +10,19 @@ import {
     getNearby,
     calculateCompatibility,
 } from "../services/matchingService.js";
+import { getSuggestions as getFreshSuggestions, notifySuggestionsChanged } from "../services/suggestionService.js";
 import { createNotification } from "../services/notificationService.js";
 
 const router = express.Router();
 
+// ── Helper: validate MongoDB ObjectId ──────────────────────────────────────────
+const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+
 // ── GET /suggestions  (recommended for-you feed) ──────────────────────────────
 router.get("/suggestions", authenticateToken, async (req, res) => {
     try {
-        const suggestions = await getMatchSuggestions(req.user.userId);
+        // Use the new suggestion service with proper exclusions
+        const suggestions = await getFreshSuggestions(req.user.userId);
         res.json({ success: true, suggestions });
     } catch (err) {
         console.error("[Suggestions]", err.message);
@@ -134,8 +140,18 @@ router.post("/like", authenticateToken, async (req, res) => {
         const { userId } = req.user;
         const { likedUserId } = req.body;
 
-        if (!likedUserId) return res.status(400).json({ success: false, message: "likedUserId is required" });
-        if (userId === likedUserId) return res.status(400).json({ success: false, message: "Cannot like yourself" });
+        // ── Validation ──────────────────────────────────────────────────────────
+        if (!likedUserId) {
+            return res.status(400).json({ success: false, message: "likedUserId is required" });
+        }
+        if (!isValidObjectId(likedUserId)) {
+            return res.status(400).json({ success: false, message: "Invalid user ID format" });
+        }
+
+        // FIX: Compare ObjectIds using .toString() — direct === comparison always fails
+        if (userId.toString() === likedUserId.toString()) {
+            return res.status(400).json({ success: false, message: "Cannot like yourself" });
+        }
 
         // Check daily like limit
         const limitCheck = await checkDailyLikeLimit(userId);
@@ -143,19 +159,43 @@ router.post("/like", authenticateToken, async (req, res) => {
             return res.status(429).json({ success: false, message: limitCheck.message });
         }
 
+        // Verify target user exists
         const likedUser = await User.findById(likedUserId);
-        if (!likedUser) return res.status(404).json({ success: false, message: "User not found" });
-
-        let match = await Match.findOne({ userId, matchedUserId: likedUserId });
-        if (!match) {
-            match = new Match({ userId, matchedUserId: likedUserId, userLiked: true, userLikedAt: new Date(), status: "liked" });
-        } else {
-            match.userLiked = true;
-            match.userLikedAt = new Date();
-            match.status = "liked";
+        if (!likedUser) {
+            return res.status(404).json({ success: false, message: "User not found" });
         }
 
-        // Check mutual like
+        // ── Check for existing match record (prevent duplicate likes) ────────────
+        const existingMatch = await Match.findOne({ userId, matchedUserId: likedUserId });
+        if (existingMatch) {
+            if (existingMatch.userLiked || existingMatch.status === "liked" || existingMatch.status === "superliked") {
+                return res.status(409).json({
+                    success: false,
+                    message: "You have already liked this user",
+                    alreadyLiked: true,
+                });
+            }
+            // If previously passed/rejected, update to liked
+            existingMatch.userLiked = true;
+            existingMatch.userLikedAt = new Date();
+            existingMatch.status = "liked";
+        }
+
+        // ── Create or update match record ───────────────────────────────────────
+        let match;
+        if (existingMatch) {
+            match = existingMatch;
+        } else {
+            match = new Match({
+                userId,
+                matchedUserId: likedUserId,
+                userLiked: true,
+                userLikedAt: new Date(),
+                status: "liked",
+            });
+        }
+
+        // ── Check mutual like ───────────────────────────────────────────────────
         const reverse = await Match.findOne({ userId: likedUserId, matchedUserId: userId });
         if (reverse && (reverse.userLiked || reverse.status === "superliked")) {
             match.status = "matched";
@@ -169,49 +209,67 @@ router.post("/like", authenticateToken, async (req, res) => {
 
         await match.save();
 
-        // Emit real-time notification if socket available
-        if (global.io && match.status !== "matched") {
-            global.io.to(likedUserId).emit("new_like", { from: userId });
-        }
-        if (global.io && match.status === "matched") {
-            global.io.to(likedUserId).emit("new_match", { with: userId });
-            global.io.to(userId).emit("new_match", { with: likedUserId });
+        // ── Emit real-time socket events ────────────────────────────────────────
+        if (global.io) {
+            if (match.status === "matched") {
+                global.io.to(likedUserId).emit("new_match", { with: userId });
+                global.io.to(userId).emit("new_match", { with: likedUserId });
+            } else {
+                global.io.to(likedUserId).emit("new_like", { from: userId });
+            }
+            // Emit like status update so UI can update in real-time
+            global.io.to(userId).emit("like_status", {
+                targetUserId: likedUserId,
+                liked: true,
+                isMatch: match.status === "matched",
+            });
         }
 
-        // Create notification for match or like
-        if (match.status === "matched") {
-            const liker = await User.findById(userId).select("firstName").lean();
-            const liked = await User.findById(likedUserId).select("firstName").lean();
-            // Notify both users of the match
-            createNotification({
-                userId,
-                type: "match",
-                title: "It's a Match! 💕",
-                message: `You matched with ${liked?.firstName || "someone"}!`,
-                referenceId: likedUserId,
-                referenceModel: "User",
-                icon: "💞",
-            }).catch(() => { });
-            createNotification({
-                userId: likedUserId,
-                type: "match",
-                title: "It's a Match! 💕",
-                message: `You matched with ${liker?.firstName || "someone"}!`,
-                referenceId: userId,
-                referenceModel: "User",
-                icon: "💞",
-            }).catch(() => { });
-        } else {
-            createNotification({
-                userId: likedUserId,
-                type: "like",
-                title: "New Like",
-                message: `Someone liked your profile!`,
-                referenceId: userId,
-                referenceModel: "User",
-                icon: "❤️",
-                metadata: { fromUserId: userId },
-            }).catch(() => { });
+        // Notify that suggestions may have changed
+        notifySuggestionsChanged();
+
+        // ── Create notifications ────────────────────────────────────────────────
+        try {
+            if (match.status === "matched") {
+                const [liker, liked] = await Promise.all([
+                    User.findById(userId).select("firstName").lean(),
+                    User.findById(likedUserId).select("firstName").lean(),
+                ]);
+                await Promise.allSettled([
+                    createNotification({
+                        userId,
+                        type: "match",
+                        title: "It's a Match! 💕",
+                        message: `You matched with ${liked?.firstName || "someone"}!`,
+                        referenceId: likedUserId,
+                        referenceModel: "User",
+                        icon: "💞",
+                    }),
+                    createNotification({
+                        userId: likedUserId,
+                        type: "match",
+                        title: "It's a Match! 💕",
+                        message: `You matched with ${liker?.firstName || "someone"}!`,
+                        referenceId: userId,
+                        referenceModel: "User",
+                        icon: "💞",
+                    }),
+                ]);
+            } else {
+                await createNotification({
+                    userId: likedUserId,
+                    type: "like",
+                    title: "New Like",
+                    message: `Someone liked your profile!`,
+                    referenceId: userId,
+                    referenceModel: "User",
+                    icon: "❤️",
+                    metadata: { fromUserId: userId },
+                });
+            }
+        } catch (notifErr) {
+            console.error("[Like] Notification error:", notifErr.message);
+            // Non-critical — don't fail the like for a notification error
         }
 
         res.json({
@@ -222,17 +280,27 @@ router.post("/like", authenticateToken, async (req, res) => {
         });
     } catch (err) {
         console.error("[Like]", err);
-        // Duplicate key — the record already exists (race condition). Treat as success.
+        // Duplicate key — the record already exists (race condition)
         if (err.code === 11000) {
-            const existing = await Match.findOne({ userId: req.user.userId, matchedUserId: req.body.likedUserId });
-            const isMatch = existing?.status === "matched";
-            return res.json({
-                success: true,
-                isMatch,
-                message: isMatch ? "It's a match! 💕" : "Already liked!",
-            });
+            try {
+                const existing = await Match.findOne({ userId: req.user.userId, matchedUserId: req.body.likedUserId });
+                if (existing) {
+                    const isMatch = existing.status === "matched";
+                    return res.status(409).json({
+                        success: false,
+                        message: isMatch ? "Already matched!" : "Already liked!",
+                        alreadyLiked: true,
+                        isMatch,
+                    });
+                }
+            } catch { /* fall through */ }
+            return res.status(409).json({ success: false, message: "Already liked this user", alreadyLiked: true });
         }
-        res.status(500).json({ success: false, message: err.message || "Failed to like user" });
+        // Mongoose CastError — invalid ObjectId
+        if (err.name === "CastError") {
+            return res.status(400).json({ success: false, message: "Invalid user ID format" });
+        }
+        res.status(500).json({ success: false, message: err.message || "Failed to like user. Please try again." });
     }
 });
 
@@ -242,8 +310,18 @@ router.post("/superlike", authenticateToken, async (req, res) => {
         const { userId } = req.user;
         const { likedUserId } = req.body;
 
-        if (!likedUserId) return res.status(400).json({ success: false, message: "likedUserId is required" });
-        if (userId === likedUserId) return res.status(400).json({ success: false, message: "Cannot super-like yourself" });
+        // ── Validation ──────────────────────────────────────────────────────────
+        if (!likedUserId) {
+            return res.status(400).json({ success: false, message: "likedUserId is required" });
+        }
+        if (!isValidObjectId(likedUserId)) {
+            return res.status(400).json({ success: false, message: "Invalid user ID format" });
+        }
+
+        // FIX: Compare ObjectIds using .toString()
+        if (userId.toString() === likedUserId.toString()) {
+            return res.status(400).json({ success: false, message: "Cannot super-like yourself" });
+        }
 
         // Check daily super like limit
         const limitCheck = await checkDailySuperLikeLimit(userId);
@@ -251,13 +329,32 @@ router.post("/superlike", authenticateToken, async (req, res) => {
             return res.status(429).json({ success: false, message: limitCheck.message });
         }
 
-        let match = await Match.findOne({ userId, matchedUserId: likedUserId });
-        if (!match) {
-            match = new Match({ userId, matchedUserId: likedUserId, userLiked: true, userLikedAt: new Date(), status: "superliked" });
+        // ── Check for existing match record ─────────────────────────────────────
+        const existingMatch = await Match.findOne({ userId, matchedUserId: likedUserId });
+        if (existingMatch) {
+            if (existingMatch.userLiked || existingMatch.status === "liked" || existingMatch.status === "superliked") {
+                return res.status(409).json({
+                    success: false,
+                    message: "You have already liked this user",
+                    alreadyLiked: true,
+                });
+            }
+            existingMatch.userLiked = true;
+            existingMatch.userLikedAt = new Date();
+            existingMatch.status = "superliked";
+        }
+
+        let match;
+        if (existingMatch) {
+            match = existingMatch;
         } else {
-            match.userLiked = true;
-            match.userLikedAt = new Date();
-            match.status = "superliked";
+            match = new Match({
+                userId,
+                matchedUserId: likedUserId,
+                userLiked: true,
+                userLikedAt: new Date(),
+                status: "superliked",
+            });
         }
 
         const reverse = await Match.findOne({ userId: likedUserId, matchedUserId: userId });
@@ -273,47 +370,65 @@ router.post("/superlike", authenticateToken, async (req, res) => {
 
         await match.save();
 
+        // ── Emit real-time socket events ────────────────────────────────────────
         if (global.io) {
             global.io.to(likedUserId).emit("super_like", { from: userId });
             if (match.status === "matched") {
                 global.io.to(likedUserId).emit("new_match", { with: userId });
                 global.io.to(userId).emit("new_match", { with: likedUserId });
             }
+            global.io.to(userId).emit("like_status", {
+                targetUserId: likedUserId,
+                liked: true,
+                isMatch: match.status === "matched",
+                isSuperLike: true,
+            });
         }
 
-        // Create notification for super like or match
-        if (match.status === "matched") {
-            const liker = await User.findById(userId).select("firstName").lean();
-            const liked = await User.findById(likedUserId).select("firstName").lean();
-            createNotification({
-                userId,
-                type: "match",
-                title: "It's a Match! 💕",
-                message: `You matched with ${liked?.firstName || "someone"}!`,
-                referenceId: likedUserId,
-                referenceModel: "User",
-                icon: "💞",
-            }).catch(() => { });
-            createNotification({
-                userId: likedUserId,
-                type: "match",
-                title: "It's a Match! 💕",
-                message: `You matched with ${liker?.firstName || "someone"}!`,
-                referenceId: userId,
-                referenceModel: "User",
-                icon: "💞",
-            }).catch(() => { });
-        } else {
-            createNotification({
-                userId: likedUserId,
-                type: "like",
-                title: "Super Like! ⭐",
-                message: `Someone super liked your profile!`,
-                referenceId: userId,
-                referenceModel: "User",
-                icon: "⭐",
-                metadata: { fromUserId: userId, isSuperLike: true },
-            }).catch(() => { });
+        // Notify that suggestions may have changed
+        notifySuggestionsChanged();
+
+        // ── Create notifications ────────────────────────────────────────────────
+        try {
+            if (match.status === "matched") {
+                const [liker, liked] = await Promise.all([
+                    User.findById(userId).select("firstName").lean(),
+                    User.findById(likedUserId).select("firstName").lean(),
+                ]);
+                await Promise.allSettled([
+                    createNotification({
+                        userId,
+                        type: "match",
+                        title: "It's a Match! 💕",
+                        message: `You matched with ${liked?.firstName || "someone"}!`,
+                        referenceId: likedUserId,
+                        referenceModel: "User",
+                        icon: "💞",
+                    }),
+                    createNotification({
+                        userId: likedUserId,
+                        type: "match",
+                        title: "It's a Match! 💕",
+                        message: `You matched with ${liker?.firstName || "someone"}!`,
+                        referenceId: userId,
+                        referenceModel: "User",
+                        icon: "💞",
+                    }),
+                ]);
+            } else {
+                await createNotification({
+                    userId: likedUserId,
+                    type: "like",
+                    title: "Super Like! ⭐",
+                    message: `Someone super liked your profile!`,
+                    referenceId: userId,
+                    referenceModel: "User",
+                    icon: "⭐",
+                    metadata: { fromUserId: userId, isSuperLike: true },
+                });
+            }
+        } catch (notifErr) {
+            console.error("[SuperLike] Notification error:", notifErr.message);
         }
 
         res.json({
@@ -326,11 +441,25 @@ router.post("/superlike", authenticateToken, async (req, res) => {
     } catch (err) {
         console.error("[SuperLike]", err);
         if (err.code === 11000) {
-            const existing = await Match.findOne({ userId: req.user.userId, matchedUserId: req.body.likedUserId });
-            const isMatch = existing?.status === "matched";
-            return res.json({ success: true, isMatch, superLike: true, message: isMatch ? "It's a match! 💕" : "Already liked!" });
+            try {
+                const existing = await Match.findOne({ userId: req.user.userId, matchedUserId: req.body.likedUserId });
+                if (existing) {
+                    const isMatch = existing.status === "matched";
+                    return res.status(409).json({
+                        success: false,
+                        message: isMatch ? "Already matched!" : "Already liked!",
+                        alreadyLiked: true,
+                        isMatch,
+                        superLike: true,
+                    });
+                }
+            } catch { /* fall through */ }
+            return res.status(409).json({ success: false, message: "Already liked this user", alreadyLiked: true, superLike: true });
         }
-        res.status(500).json({ success: false, message: err.message || "Failed to super-like" });
+        if (err.name === "CastError") {
+            return res.status(400).json({ success: false, message: "Invalid user ID format" });
+        }
+        res.status(500).json({ success: false, message: err.message || "Failed to super-like. Please try again." });
     }
 });
 
@@ -340,6 +469,9 @@ router.post("/pass", authenticateToken, async (req, res) => {
         const { userId } = req.user;
         const { passedUserId } = req.body;
         if (!passedUserId) return res.status(400).json({ success: false, message: "passedUserId is required" });
+        if (!isValidObjectId(passedUserId)) {
+            return res.status(400).json({ success: false, message: "Invalid user ID format" });
+        }
 
         let match = await Match.findOne({ userId, matchedUserId: passedUserId });
         if (!match) {
@@ -348,11 +480,18 @@ router.post("/pass", authenticateToken, async (req, res) => {
             match.status = "rejected";
         }
         await match.save();
+
+        // Notify that suggestions may have changed after passing
+        notifySuggestionsChanged();
+
         res.json({ success: true, message: "Passed" });
     } catch (err) {
         console.error("[Pass]", err);
         if (err.code === 11000) {
             return res.json({ success: true, message: "Already passed" });
+        }
+        if (err.name === "CastError") {
+            return res.status(400).json({ success: false, message: "Invalid user ID format" });
         }
         res.status(500).json({ success: false, message: err.message || "Failed to pass" });
     }
@@ -422,6 +561,9 @@ router.post("/unmatch", authenticateToken, async (req, res) => {
             ],
         });
 
+        // Notify that suggestions may have changed after unmatching
+        notifySuggestionsChanged();
+
         res.json({
             success: true,
             message: "Unmatched successfully",
@@ -452,6 +594,9 @@ router.post("/block", authenticateToken, async (req, res) => {
             { $or: [{ userId, matchedUserId: blockedUserId }, { userId: blockedUserId, matchedUserId: userId }] },
             { status: "blocked" }
         );
+
+        // Notify that suggestions may have changed after blocking
+        notifySuggestionsChanged();
 
         res.json({ success: true, message: "User blocked" });
     } catch (err) {

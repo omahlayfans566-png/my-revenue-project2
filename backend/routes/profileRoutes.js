@@ -2,6 +2,7 @@ import express from "express";
 import { User } from "../models/User.js";
 import { authenticateToken } from "../middleware/auth.js";
 import { computeProfileCompletion } from "../services/onboardingService.js";
+import { notifySuggestionsChanged } from "../services/suggestionService.js";
 
 const router = express.Router();
 
@@ -131,6 +132,11 @@ router.put("/:userId", authenticateToken, async (req, res) => {
         const PUB = "-password -verificationToken -verificationTokenExpires -passwordResetToken -passwordResetExpires -refreshTokens";
         const updated = await User.findById(userId).select(PUB).lean();
 
+        // Notify all clients that a profile was updated
+        try {
+            notifySuggestionsChanged();
+        } catch (e) { /* silent */ }
+
         res.json({
             success: true,
             message: "Profile updated",
@@ -163,6 +169,11 @@ router.post("/:userId/photo", authenticateToken, async (req, res) => {
         // Recompute completion (adding a photo may increase score)
         user.profileCompletion = computeProfileCompletion(user);
         await user.save();
+
+        // Notify all clients that a profile photo was uploaded
+        try {
+            notifySuggestionsChanged();
+        } catch (e) { /* silent */ }
 
         res.json({ success: true, message: "Photo added", photos: user.photos, profilePicture: user.profilePicture });
     } catch (error) {
