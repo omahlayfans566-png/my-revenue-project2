@@ -3,7 +3,7 @@
  * All requests include JWT token from localStorage
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "https://dateclone-backend.onrender.com/api";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "https://my-revenue-project2.onrender.com/api";
 
 // Helper to get auth token (internal use only)
 const _getToken = (): string | null => sessionStorage.getItem("authToken");

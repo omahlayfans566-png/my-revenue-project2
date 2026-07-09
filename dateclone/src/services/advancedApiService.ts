@@ -3,7 +3,7 @@
  * Phase 4 endpoints for Who Liked Me, Visitors, Stories, AI suggestions, etc.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "https://dateclone-backend.onrender.com/api";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "https://my-revenue-project2.onrender.com/api";
 
 const _getToken = (): string | null => sessionStorage.getItem("authToken");
 
