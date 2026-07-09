@@ -15,16 +15,21 @@ const userSchema = new mongoose.Schema(
         // ── Account ──────────────────────────────────────────────────────────
         firstName: { type: String, required: true, trim: true },
         lastName: { type: String, required: true, trim: true },
+        displayName: { type: String, trim: true },
         username: { type: String, required: true, unique: true, trim: true, lowercase: true },
         email: { type: String, required: true, unique: true, trim: true, lowercase: true },
+        newEmail: { type: String, trim: true, lowercase: true }, // pending email change
+        newEmailToken: String,
+        newEmailTokenExpires: Date,
         phone: { type: String, trim: true },
         password: { type: String, required: true },
+        passwordChangedAt: Date,
 
         // ── Personal ─────────────────────────────────────────────────────────
         dateOfBirth: Date,
         age: Number,
-        gender: { type: String, enum: ["male", "female", "other"] },
-        lookingFor: { type: String, enum: ["men", "women", "both"] },
+        gender: { type: String, enum: ["male", "female", "other", "non_binary"] },
+        lookingFor: { type: String, enum: ["men", "women", "both", "everyone"] },
 
         // ── Location ─────────────────────────────────────────────────────────
         country: String,
@@ -36,6 +41,7 @@ const userSchema = new mongoose.Schema(
         // ── Profile ──────────────────────────────────────────────────────────
         profilePicture: String,
         photos: [String],
+        coverPhoto: String,
         aboutMe: String,
         bio: String,   // alias kept for compatibility
         occupation: String,
@@ -47,11 +53,20 @@ const userSchema = new mongoose.Schema(
 
         // ── Physical attributes ───────────────────────────────────────────────
         height: { type: Number }, // in centimeters
+        weight: { type: Number }, // in kg (optional)
+        zodiacSign: { type: String, enum: ["aries", "taurus", "gemini", "cancer", "leo", "virgo", "libra", "scorpio", "sagittarius", "capricorn", "aquarius", "pisces", ""] },
+        personalityType: { type: String, enum: ["intj", "intp", "entj", "entp", "infj", "infp", "enfj", "enfp", "istj", "isfj", "estj", "esfj", "istp", "isfp", "estp", "esfp", ""] },
 
         // ── Interests & Lifestyle ─────────────────────────────────────────────
         interests: [String],
+        hobbies: [String],
+        favoriteMusic: [String],
+        favoriteMovies: [String],
+        favoriteSports: [String],
         smoking: { type: String, enum: ["never", "socially", "occasionally", "regularly"] },
         drinking: { type: String, enum: ["never", "socially", "frequently"] },
+        pets: { type: String, enum: ["dog", "cat", "both", "other", "none", ""] },
+        lifestyle: { type: String, enum: ["active", "moderate", "sedentary", ""] },
 
         // ── Match Preferences ─────────────────────────────────────────────────
         minAge: { type: Number, default: 18 },
@@ -64,6 +79,7 @@ const userSchema = new mongoose.Schema(
         hasChildren: { type: String, enum: ["yes", "no", "prefer_not_to_say"] },
         wantsChildren: { type: String, enum: ["yes", "no", "maybe"] },
         religion: String,
+        tribe: String,
         religionImportance: { type: String, enum: ["very_important", "somewhat_important", "not_important"] },
         relationshipValue: String,
 
@@ -71,13 +87,34 @@ const userSchema = new mongoose.Schema(
         emailVerified: { type: Boolean, default: false },
         verificationToken: String,
         verificationTokenExpires: Date,
+        isVerified: { type: Boolean, default: false }, // profile verification badge
+        verifiedAt: Date,
 
         // ── Password reset ────────────────────────────────────────────────────
         passwordResetToken: String,
         passwordResetExpires: Date,
 
+        // ── 2FA ───────────────────────────────────────────────────────────────
+        twoFactorEnabled: { type: Boolean, default: false },
+        twoFactorSecret: String,
+        twoFactorMethod: { type: String, enum: ["email", "app"], default: "email" },
+
+        // ── Account lockout ───────────────────────────────────────────────────
+        loginAttempts: { type: Number, default: 0 },
+        lockUntil: Date,
+        lastFailedLogin: Date,
+
         // ── Refresh tokens (stored as array to support multi-device) ──────────
         refreshTokens: [{ type: String }],
+        deviceSessions: [{
+            token: String,
+            deviceName: String,
+            deviceType: String,
+            ipAddress: String,
+            userAgent: String,
+            lastActive: Date,
+            createdAt: { type: Date, default: Date.now },
+        }],
 
         // ── Role (RBAC) ─────────────────────────────────────────────────────
         role: {
@@ -120,6 +157,8 @@ const userSchema = new mongoose.Schema(
         premiumExpires: Date,
         stripeCustomerId: String,
         boostExpires: Date,
+        superLikesRemaining: { type: Number, default: 5 }, // daily super likes for free users
+        superLikesResetDate: Date,
 
         // ── Passport (change location) ──────────────────────────────────────
         passportLocation: {
@@ -134,6 +173,7 @@ const userSchema = new mongoose.Schema(
         reportCount: { type: Number, default: 0 },
         flaggedForReview: { type: Boolean, default: false },
         blocked: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+        muted: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
         reported: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     },
     {

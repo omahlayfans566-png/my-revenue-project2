@@ -25,13 +25,25 @@ const messageSchema = new mongoose.Schema(
         deliveredAt: Date,
         isDeleted: { type: Boolean, default: false },
         deletedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-        reaction: String, // emoji reaction
+        reaction: String, // emoji reaction (single, for backward compat)
+        reactions: [{ userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, emoji: String }], // multiple reactions
+        reactionCount: { type: Number, default: 0 },
         replyTo: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Message",
         },
         replyContent: String, // cached content of replied message
         replyFrom: String, // name of replied message sender
+        isFlagged: { type: Boolean, default: false },
+        flagReasons: [String],
+        flaggedAt: Date,
+        voiceNote: String,
+        fileUrl: String,
+        fileName: String,
+        fileSize: Number,
+        gifUrl: String,
+        isForwarded: { type: Boolean, default: false },
+        forwardedFrom: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     },
     { timestamps: true }
 );

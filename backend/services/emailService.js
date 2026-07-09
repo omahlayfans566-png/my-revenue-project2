@@ -301,6 +301,42 @@ export const sendPasswordResetEmail = async (email, resetToken) => {
   });
 };
 
+// ── 2FA code email ────────────────────────────────────────────────────────────
+export const send2FACode = async (email, otp) => {
+  console.log(
+    `\n📧 [EmailService] 2FA code for ${email}\n` +
+    `   ┌──────────────────────────┐\n` +
+    `   │  Code: ${otp}  (5 min) │\n` +
+    `   └──────────────────────────┘\n`
+  );
+
+  const html = twoFATemplate(otp);
+  const text = `Your DateClone two-factor authentication code is: ${otp}\n\nThis code expires in 5 minutes. Do not share it with anyone.`;
+
+  return sendEmail({
+    to: email,
+    subject: "Your DateClone 2FA Code",
+    html,
+    text,
+  });
+};
+
+// ── Email change verification ─────────────────────────────────────────────────
+export const sendEmailChangeVerification = async (email, token) => {
+  const verifyUrl = `${EMAIL_CONFIG.frontendUrl}/settings?verifyEmail=${token}`;
+  console.log(`[EmailService] Email change verification for ${email}: ${verifyUrl}`);
+
+  const html = emailChangeTemplate(verifyUrl);
+  const text = `Verify your new email address: ${verifyUrl}\n\nThis link expires in 1 hour.`;
+
+  return sendEmail({
+    to: email,
+    subject: "Verify Your New Email Address - DateClone",
+    html,
+    text,
+  });
+};
+
 // ── Premium activation email ───────────────────────────────────────────────────
 export const sendPremiumActivationEmail = async (email, tier, expiryDate) => {
   return sendEmail({
@@ -436,6 +472,66 @@ const resetTemplate = (resetUrl) => `
             </div>
             <p style="color:#aaa;font-size:12px;text-align:center;">If you didn't request this, your account is safe — just ignore this email.</p>
             <p style="color:#ccc;font-size:11px;text-align:center;word-break:break-all;margin-top:8px;">${resetUrl}</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+const twoFATemplate = (otp) => `
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f7f7f7;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f7f7f7;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:36px;text-align:center;">
+            <h1 style="color:#fff;margin:0;font-size:26px;font-weight:800;">DateClone 🔐</h1>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:36px;">
+            <p style="color:#333;font-size:16px;margin:0 0 16px;">Two-Factor Authentication</p>
+            <p style="color:#666;font-size:15px;line-height:1.7;margin:0 0 28px;">Enter this code to complete your login.</p>
+            <div style="text-align:center;margin:28px 0;">
+              <div style="display:inline-block;background:#f0f0ff;border:2px solid #4f46e5;border-radius:18px;padding:24px 48px;">
+                <p style="font-size:42px;font-weight:900;letter-spacing:12px;color:#4f46e5;margin:0;font-family:'Courier New',monospace;">${otp}</p>
+              </div>
+            </div>
+            <p style="color:#92400e;font-size:13px;text-align:center;background:#fffbeb;padding:12px;border-radius:10px;">⏱ Expires in 5 minutes. Never share this code.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+const emailChangeTemplate = (verifyUrl) => `
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f7f7f7;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f7f7f7;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:linear-gradient(135deg,#FF4D8D,#FF7AA8);padding:36px;text-align:center;">
+            <h1 style="color:#fff;margin:0;font-size:26px;font-weight:800;">DateClone 📧</h1>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:36px;">
+            <p style="color:#333;font-size:16px;margin:0 0 16px;">Email Change Request</p>
+            <p style="color:#666;font-size:15px;line-height:1.7;margin:0 0 28px;">Click the button below to verify your new email address. This link expires in 1 hour.</p>
+            <div style="text-align:center;margin:28px 0;">
+              <a href="${verifyUrl}" style="background:linear-gradient(135deg,#FF4D8D,#FF7AA8);color:#fff;padding:14px 36px;border-radius:50px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block;">Verify Email</a>
+            </div>
+            <p style="color:#999;font-size:12px;text-align:center;">If you didn't request this, your email will remain unchanged.</p>
           </td>
         </tr>
       </table>

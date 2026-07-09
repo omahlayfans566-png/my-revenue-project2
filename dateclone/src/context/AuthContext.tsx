@@ -22,18 +22,22 @@ export interface AuthUser {
     lastName: string;
     email: string;
     username: string;
+    displayName?: string;
     profilePicture?: string;
+    coverPhoto?: string;
     isPremium?: boolean;
     premiumTier?: string;
     premiumExpires?: string;
     isMember?: boolean;
     isActive?: boolean;
+    isVerified?: boolean;
     role?: string;
     isAdmin?: boolean;
     memberSince?: string;
     profileCompletion?: number;
     emailVerified?: boolean;
-    // Full profile fields — populated after /auth/me or profile update
+    twoFactorEnabled?: boolean;
+    // Full profile fields
     aboutMe?: string;
     occupation?: string;
     education?: string;
@@ -47,6 +51,7 @@ export interface AuthUser {
     gender?: string;
     lookingFor?: string;
     religion?: string;
+    tribe?: string;
     religionImportance?: string;
     relationshipGoal?: string;
     relationshipValue?: string;
@@ -54,6 +59,16 @@ export interface AuthUser {
     wantsChildren?: string;
     smoking?: string;
     drinking?: string;
+    hobbies?: string[];
+    height?: number;
+    weight?: number;
+    zodiacSign?: string;
+    personalityType?: string;
+    favoriteMusic?: string[];
+    favoriteMovies?: string[];
+    favoriteSports?: string[];
+    pets?: string;
+    lifestyle?: string;
     minAge?: number;
     maxAge?: number;
     preferredCountry?: string;
@@ -61,7 +76,7 @@ export interface AuthUser {
     interests?: string[];
     languages?: string[];
     photos?: string[];
-    // Allow any extra fields returned by the backend without TS errors
+    // Allow any extra fields
     [key: string]: unknown;
 }
 
@@ -69,10 +84,16 @@ interface AuthContextValue {
     user: AuthUser | null;
     isAuthenticated: boolean;
     loading: boolean;
-    login: (email: string, password: string) => Promise<void>;
-    logout: () => void;
+    login: (email: string, password: string, rememberMe?: boolean) => Promise<any>;
+    logout: () => Promise<void>;
+    logoutAll: () => Promise<void>;
     refreshUser: () => Promise<void>;
     updateLocalUser: (updates: Partial<AuthUser>) => void;
+    verify2FA: (userId: string, otp: string) => Promise<void>;
+    requires2FA: boolean;
+    pendingUserId: string | null;
+    pendingTempToken: string | null;
+    cancel2FA: () => void;
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -88,6 +109,9 @@ export const useAuth = (): AuthContextValue => {
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<AuthUser | null>(getUserFromLocal());
     const [loading, setLoading] = useState(true);
+    const [requires2FA, setRequires2FA] = useState(false);
+    const [pendingUserId, setPendingUserId] = useState<string | null>(null);
+    const [pendingTempToken, setPendingTempToken] = useState<string | null>(null);
 
     // On mount: validate stored token against the server
     useEffect(() => {
@@ -103,8 +127,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 saveUserToLocal(res.user);
             } catch (err: any) {
                 const msg = (err.message || "").toLowerCase();
-                // Only clear auth on a genuine 401/403 (invalid/expired token).
-                // Keep the user logged in if the server/DB is simply unreachable.
                 const isAuthError =
                     msg.includes("invalid token") ||
                     msg.includes("no token") ||
@@ -115,8 +137,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     clearAuthData();
                     setUser(null);
                 }
-                // Otherwise: keep cached user from sessionStorage so the app still
-                // works while the server is starting up or DB is connecting.
             } finally {
                 setLoading(false);
             }
@@ -124,20 +144,64 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         init();
     }, []);
 
-    // sessionStorage clears automatically when the browser tab is closed.
-    // Do NOT add a beforeunload handler — it fires on hard refresh and
-    // navigation, which would clear the token every time the user reloads
-    // the /admin page or any other route, forcing them back to /login.
+    const login = useCallback(async (email: string, password: string, rememberMe: boolean = false) => {
+        const res = await authAPI.login(email, password, rememberMe);
 
-    const login = useCallback(async (email: string, password: string) => {
-        const res = await authAPI.login(email, password);
+        // Check if 2FA is required
+        if (res.requires2FA) {
+            setRequires2FA(true);
+            setPendingUserId(res.userId);
+            setPendingTempToken(res.tempToken);
+            return { requires2FA: true };
+        }
+
         setAuthToken(res.token);
+        if (res.refreshToken) {
+            sessionStorage.setItem("refreshToken", res.refreshToken);
+        }
         saveUserToLocal(res.user);
         setUser(res.user);
+        return { requires2FA: false, user: res.user };
     }, []);
 
-    const logout = useCallback(() => {
+    const verify2FA = useCallback(async (userId: string, otp: string) => {
+        const res = await authAPI.verify2FA(userId, otp, pendingTempToken || undefined);
+        setAuthToken(res.token);
+        if (res.refreshToken) {
+            sessionStorage.setItem("refreshToken", res.refreshToken);
+        }
+        saveUserToLocal(res.user);
+        setUser(res.user);
+        setRequires2FA(false);
+        setPendingUserId(null);
+        setPendingTempToken(null);
+    }, [pendingTempToken]);
+
+    const cancel2FA = useCallback(() => {
+        setRequires2FA(false);
+        setPendingUserId(null);
+        setPendingTempToken(null);
+    }, []);
+
+    const logout = useCallback(async () => {
+        const refreshToken = sessionStorage.getItem("refreshToken");
+        try {
+            await authAPI.logout(refreshToken || undefined);
+        } catch { /* silent */ }
         clearAuthData();
+        sessionStorage.removeItem("refreshToken");
+        setUser(null);
+        setRequires2FA(false);
+        setPendingUserId(null);
+        setPendingTempToken(null);
+    }, []);
+
+    const logoutAll = useCallback(async () => {
+        try {
+            await authAPI.logoutAll();
+        } catch { /* silent */ }
+        clearAuthData();
+        sessionStorage.removeItem("refreshToken");
         setUser(null);
     }, []);
 
@@ -170,8 +234,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 loading,
                 login,
                 logout,
+                logoutAll,
                 refreshUser,
                 updateLocalUser,
+                verify2FA,
+                requires2FA,
+                pendingUserId,
+                pendingTempToken,
+                cancel2FA,
             }}
         >
             {children}

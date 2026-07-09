@@ -1,275 +1,369 @@
 /**
- * matchingService.js
- *
- * Discovery and compatibility logic.
- *
- * Design principles:
- *  - Hard exclusions: self, banned users, blocked users, soft-deleted users
- *  - Soft exclusions: prefer users with gender/age matching the current user's
- *    preferences, but NEVER exclude solely because a field is missing or null.
- *  - All feed tabs (For You, New, Active, Nearby, Online) must return results
- *    even when users have incomplete profiles.
+ * Matching Service - Phase 8: Daily Matching
+ * Smart compatibility engine, daily recommendations, trending, nearby, etc.
  */
-
 import { User } from "../models/User.js";
 import { Match } from "../models/Match.js";
+import { ProfileView } from "../models/ProfileView.js";
 
-// ── Hard base query — minimal safe exclusions only ────────────────────────────
-// Applied to EVERY discovery query. Only excludes users who must never appear:
-//   • The current user themselves
-//   • Banned users
-//   • Soft-deleted users
-//   • Users who explicitly blocked the current user
-//   • Users flagged for review
-//   • Users who set profileVisible = false
-const hardBase = (user) => ({
-    _id: { $ne: user._id },
-    isBanned: { $ne: true },
-    deletedAt: { $exists: false },
-    flaggedForReview: { $ne: true },
-    blocked: { $nin: [user._id] },
-    "privacySettings.profileVisible": { $ne: false },
-});
+// ─── Compatibility Score Calculation ──────────────────────────────────────────
+export const calculateCompatibility = (user1, user2) => {
+    let score = 0;
+    const reasons = [];
 
-// ── Soft preference filters (applied only when current user has the field) ────
-// These improve match quality but never reduce the pool to zero.
-const softFilters = (user) => {
-    const filters = {};
+    // Age compatibility (20 points)
+    if (user1.age && user2.age) {
+        const ageDiff = Math.abs(user1.age - user2.age);
+        if (ageDiff <= 3) { score += 20; reasons.push("Great age match"); }
+        else if (ageDiff <= 7) { score += 15; reasons.push("Good age match"); }
+        else if (ageDiff <= 12) { score += 8; reasons.push("Decent age match"); }
+        else { score += 2; }
+    }
 
-    // Gender preference: only filter if the current user set lookingFor
-    // AND the candidate has a gender field set. Skip silently if missing.
-    if (user.lookingFor && user.lookingFor !== "both") {
-        const GENDER_MAP = { men: "male", women: "female" };
-        const targetGender = GENDER_MAP[user.lookingFor];
-        if (targetGender) {
-            // Use $in to also include users with no gender set (they appear for everyone)
-            filters.gender = { $in: [targetGender, null, undefined, ""] };
+    // Location compatibility (15 points)
+    if (user1.country && user2.country) {
+        if (user1.country === user2.country) {
+            score += 10;
+            reasons.push("Same country");
+            if (user1.city && user2.city && user1.city === user2.city) {
+                score += 5;
+                reasons.push("Same city");
+            }
         }
     }
 
-    // Age filter: only when both minAge and maxAge are set on the current user
-    // and are sensible values
-    if (user.minAge && user.maxAge && user.minAge < user.maxAge) {
-        // Also include users with no age set ($exists: false handles missing)
-        filters.$or = [
-            { age: { $gte: user.minAge, $lte: user.maxAge } },
-            { age: { $exists: false } },
-            { age: null },
-        ];
+    // Interest overlap (25 points)
+    if (user1.interests?.length && user2.interests?.length) {
+        const common = user1.interests.filter(i => user2.interests.includes(i));
+        const maxPossible = Math.max(user1.interests.length, user2.interests.length);
+        const overlapRatio = common.length / maxPossible;
+        score += Math.round(overlapRatio * 25);
+        if (common.length > 0) reasons.push(`${common.length} shared interests`);
     }
 
-    // Country preference: only when explicitly set (not "Anywhere in Africa")
-    if (
-        user.preferredCountry &&
-        user.preferredCountry !== "Anywhere in Africa" &&
-        user.preferredCountry.trim() !== ""
-    ) {
-        filters.country = user.preferredCountry;
+    // Relationship goal alignment (15 points)
+    if (user1.relationshipGoal && user2.relationshipGoal) {
+        if (user1.relationshipGoal === user2.relationshipGoal) {
+            score += 15;
+            reasons.push("Same relationship goal");
+        }
     }
 
-    return filters;
+    // Lifestyle compatibility (15 points)
+    if (user1.lifestyle && user2.lifestyle) {
+        if (user1.lifestyle === user2.lifestyle) {
+            score += 8;
+            reasons.push("Similar lifestyle");
+        }
+    }
+    if (user1.smoking && user2.smoking) {
+        if (user1.smoking === user2.smoking) {
+            score += 4;
+            reasons.push("Same smoking preference");
+        }
+    }
+    if (user1.drinking && user2.drinking) {
+        if (user1.drinking === user2.drinking) {
+            score += 3;
+            reasons.push("Same drinking preference");
+        }
+    }
+
+    // Education compatibility (5 points)
+    if (user1.education && user2.education) {
+        if (user1.education === user2.education) {
+            score += 5;
+            reasons.push("Similar education level");
+        }
+    }
+
+    // Religion compatibility (5 points)
+    if (user1.religion && user2.religion) {
+        if (user1.religion === user2.religion) {
+            score += 5;
+            reasons.push("Same religion");
+        }
+    }
+
+    return { score: Math.min(100, score), reasons };
 };
 
-// ── Public shape ──────────────────────────────────────────────────────────────
-const shape = (c, score) => ({
-    _id: c._id,
-    firstName: c.firstName,
-    lastName: c.lastName,
-    profilePicture: c.profilePicture,
-    photos: c.photos || [],
-    age: c.age,
-    city: c.city,
-    country: c.country,
-    occupation: c.occupation,
-    aboutMe: c.aboutMe,
-    interests: c.interests || [],
-    relationshipGoal: c.relationshipGoal,
-    religion: c.religion,
-    education: c.education,
-    languages: c.languages || [],
-    profileCompletion: c.profileCompletion,
-    isPremium: c.isPremium,
-    isVerified: c.emailVerified === true,
-    lastLogin: c.lastLogin,
-    memberSince: c.memberSince,
-    compatibilityScore: score ? Math.min(99, Math.round(score)) : undefined,
-});
-
-// ── Log helper ────────────────────────────────────────────────────────────────
-const logDiscovery = (label, query, count) => {
-    console.log(
-        `[Discovery] ${label} | query: ${JSON.stringify(query)} | returned: ${count} users`
-    );
-};
-
-// ── Main suggestions (For You feed) ──────────────────────────────────────────
-export const getMatchSuggestions = async (userId, limit = 20) => {
+// ─── Get Daily Recommendations ────────────────────────────────────────────────
+export const getDailyRecommendations = async (userId, limit = 20) => {
     const user = await User.findById(userId).lean();
-    if (!user) throw new Error("User not found");
+    if (!user) return [];
 
-    const base = hardBase(user);
-    const soft = softFilters(user);
+    // Get already interacted users
+    const interactions = await Match.find({
+        $or: [{ userId }, { matchedUserId: userId }],
+    }).lean();
+    const interactedIds = new Set();
+    interactions.forEach(i => {
+        interactedIds.add(i.userId.toString());
+        interactedIds.add(i.matchedUserId.toString());
+    });
 
-    // Merge: $or from soft filters needs special handling to not override hard base $or
-    const query = { ...base };
-    if (soft.$or) {
-        query.$and = [{ $or: soft.$or }];
-        delete soft.$or;
+    // Find potential matches
+    const query = {
+        _id: { $nin: [userId, ...Array.from(interactedIds)] },
+        isActive: true,
+        isBanned: false,
+        emailVerified: true,
+        isMember: true,
+        profileCompletion: { $gte: 50 },
+    };
+
+    // Gender preference
+    if (user.lookingFor === "men") query.gender = "male";
+    else if (user.lookingFor === "women") query.gender = "female";
+    else if (user.lookingFor === "both") query.gender = { $in: ["male", "female"] };
+
+    // Age preference
+    if (user.minAge || user.maxAge) {
+        query.age = {};
+        if (user.minAge) query.age.$gte = user.minAge;
+        if (user.maxAge) query.age.$lte = user.maxAge;
     }
-    Object.assign(query, soft);
-
-    // Exclude profiles already acted on (liked/passed/blocked)
-    const acted = await Match.find({
-        userId,
-        status: { $in: ["liked", "matched", "rejected", "blocked", "superliked"] },
-    }).select("matchedUserId").lean();
-    const actedIds = new Set(acted.map(m => m.matchedUserId.toString()));
 
     const candidates = await User.find(query)
-        .sort({ profileCompletion: -1, lastLogin: -1 })
-        .limit(Math.max(limit * 5, 100))
+        .select("-password -refreshTokens -verificationToken -twoFactorSecret")
+        .limit(100)
         .lean();
 
-    logDiscovery("suggestions", query, candidates.length);
+    // Score and sort
+    const scored = candidates.map(c => {
+        const { score, reasons } = calculateCompatibility(user, c);
+        return { ...c, compatibilityScore: score, compatibilityReasons: reasons };
+    });
 
-    const scored = candidates
-        .filter(c => !actedIds.has(c._id.toString()))
-        .map(c => ({ c, score: scoreCompatibility(user, c) }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, limit);
-
-    console.log(`[Discovery] suggestions after acted-on filter: ${scored.length}`);
-
-    return scored.map(({ c, score }) => shape(c, score));
+    scored.sort((a, b) => b.compatibilityScore - a.compatibilityScore);
+    return scored.slice(0, limit);
 };
 
-// ── Recently joined (last 30 days — widened from 7 days) ─────────────────────
+// ─── Get Suggested Matches ────────────────────────────────────────────────────
+export const getSuggestedMatches = async (userId, limit = 10) => {
+    const user = await User.findById(userId).lean();
+    if (!user) return [];
+
+    const recommendations = await getDailyRecommendations(userId, limit * 3);
+
+    // Boost users with similar interests
+    if (user.interests?.length) {
+        recommendations.sort((a, b) => {
+            const aCommon = a.interests?.filter(i => user.interests.includes(i)).length || 0;
+            const bCommon = b.interests?.filter(i => user.interests.includes(i)).length || 0;
+            return bCommon - aCommon || b.compatibilityScore - a.compatibilityScore;
+        });
+    }
+
+    return recommendations.slice(0, limit);
+};
+
+// ─── Get Nearby Users ─────────────────────────────────────────────────────────
+export const getNearbyUsers = async (userId, maxDistanceKm = 50, limit = 20) => {
+    const user = await User.findById(userId).lean();
+    if (!user || !user.latitude || !user.longitude) return [];
+
+    const interactions = await Match.find({
+        $or: [{ userId }, { matchedUserId: userId }],
+    }).lean();
+    const interactedIds = new Set();
+    interactions.forEach(i => {
+        interactedIds.add(i.userId.toString());
+        interactedIds.add(i.matchedUserId.toString());
+    });
+
+    // Approximate: 1 degree latitude ≈ 111km
+    const latRange = maxDistanceKm / 111;
+    const lonRange = maxDistanceKm / (111 * Math.cos(user.latitude * Math.PI / 180));
+
+    const nearby = await User.find({
+        _id: { $nin: [userId, ...Array.from(interactedIds)] },
+        isActive: true,
+        isBanned: false,
+        isMember: true,
+        latitude: { $gte: user.latitude - latRange, $lte: user.latitude + latRange },
+        longitude: { $gte: user.longitude - lonRange, $lte: user.longitude + lonRange },
+    })
+        .select("-password -refreshTokens -verificationToken -twoFactorSecret")
+        .limit(limit)
+        .lean();
+
+    // Calculate actual distances
+    return nearby.map(u => {
+        const { score, reasons } = calculateCompatibility(user, u);
+        const dist = getDistance(user.latitude, user.longitude, u.latitude, u.longitude);
+        return { ...u, distance: Math.round(dist), compatibilityScore: score, compatibilityReasons: reasons };
+    }).sort((a, b) => a.distance - b.distance);
+};
+
+// ─── Get Trending Profiles ────────────────────────────────────────────────────
+export const getTrendingProfiles = async (userId, limit = 20) => {
+    const user = await User.findById(userId).lean();
+    if (!user) return [];
+
+    const interactions = await Match.find({
+        $or: [{ userId }, { matchedUserId: userId }],
+    }).lean();
+    const interactedIds = new Set();
+    interactions.forEach(i => {
+        interactedIds.add(i.userId.toString());
+        interactedIds.add(i.matchedUserId.toString());
+    });
+
+    // Trending = most profile views in last 7 days
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const trendingIds = await ProfileView.aggregate([
+        { $match: { viewedAt: { $gte: sevenDaysAgo } } },
+        { $group: { _id: "$viewedUserId", count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: limit * 2 },
+    ]);
+
+    const ids = trendingIds.map(t => t._id).filter(id => !interactedIds.has(id.toString()) && id.toString() !== userId);
+    const users = await User.find({ _id: { $in: ids } })
+        .select("-password -refreshTokens -verificationToken -twoFactorSecret")
+        .lean();
+
+    return users.map(u => {
+        const { score, reasons } = calculateCompatibility(user, u);
+        return { ...u, compatibilityScore: score, compatibilityReasons: reasons };
+    }).slice(0, limit);
+};
+
+// ─── Get Recently Joined ──────────────────────────────────────────────────────
 export const getRecentlyJoined = async (userId, limit = 20) => {
     const user = await User.findById(userId).lean();
     if (!user) return [];
 
-    // Widen to 30 days so small test databases always have results
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
-    const query = {
-        ...hardBase(user),
-        createdAt: { $gte: thirtyDaysAgo },
-    };
+    const interactions = await Match.find({
+        $or: [{ userId }, { matchedUserId: userId }],
+    }).lean();
+    const interactedIds = new Set();
+    interactions.forEach(i => {
+        interactedIds.add(i.userId.toString());
+        interactedIds.add(i.matchedUserId.toString());
+    });
 
-    const users = await User.find(query)
+    const recent = await User.find({
+        _id: { $nin: [userId, ...Array.from(interactedIds)] },
+        isActive: true,
+        isBanned: false,
+        isMember: true,
+    })
         .sort({ createdAt: -1 })
         .limit(limit)
+        .select("-password -refreshTokens -verificationToken -twoFactorSecret")
         .lean();
 
-    logDiscovery("recently-joined", query, users.length);
-
-    // If still empty, return all non-excluded users (no date restriction)
-    if (users.length === 0) {
-        const fallback = await User.find(hardBase(user))
-            .sort({ createdAt: -1 })
-            .limit(limit)
-            .lean();
-        console.log(`[Discovery] recently-joined fallback: ${fallback.length} users`);
-        return fallback.map(c => shape(c));
-    }
-
-    return users.map(c => shape(c));
+    return recent.map(u => {
+        const { score, reasons } = calculateCompatibility(user, u);
+        return { ...u, compatibilityScore: score, compatibilityReasons: reasons };
+    });
 };
 
-// ── Recently active (last 7 days — widened from 24 h) ─────────────────────────
-export const getRecentlyActive = async (userId, limit = 20) => {
+// ─── Get Most Active Users ────────────────────────────────────────────────────
+export const getMostActiveUsers = async (userId, limit = 20) => {
     const user = await User.findById(userId).lean();
     if (!user) return [];
 
-    // Widen to 7 days so small test databases always have results
-    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
-    const query = {
-        ...hardBase(user),
-        lastLogin: { $gte: sevenDaysAgo },
-    };
+    const interactions = await Match.find({
+        $or: [{ userId }, { matchedUserId: userId }],
+    }).lean();
+    const interactedIds = new Set();
+    interactions.forEach(i => {
+        interactedIds.add(i.userId.toString());
+        interactedIds.add(i.matchedUserId.toString());
+    });
 
-    const users = await User.find(query)
-        .sort({ lastLogin: -1 })
+    const active = await User.find({
+        _id: { $nin: [userId, ...Array.from(interactedIds)] },
+        isActive: true,
+        isBanned: false,
+        isMember: true,
+        lastSeen: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+    })
+        .sort({ lastSeen: -1 })
         .limit(limit)
+        .select("-password -refreshTokens -verificationToken -twoFactorSecret")
         .lean();
 
-    logDiscovery("recently-active", query, users.length);
-
-    // Fallback: all non-excluded users sorted by lastLogin
-    if (users.length === 0) {
-        const fallback = await User.find(hardBase(user))
-            .sort({ lastLogin: -1, createdAt: -1 })
-            .limit(limit)
-            .lean();
-        console.log(`[Discovery] recently-active fallback: ${fallback.length} users`);
-        return fallback.map(c => shape(c));
-    }
-
-    return users.map(c => shape(c));
+    return active.map(u => {
+        const { score, reasons } = calculateCompatibility(user, u);
+        return { ...u, compatibilityScore: score, compatibilityReasons: reasons };
+    });
 };
 
-// ── Nearby ────────────────────────────────────────────────────────────────────
-export const getNearby = async (userId, limit = 20) => {
+// ─── Get Personalized Recommendations ─────────────────────────────────────────
+export const getPersonalizedRecommendations = async (userId, limit = 20) => {
     const user = await User.findById(userId).lean();
     if (!user) return [];
 
-    // If no location data, fall back to same country, then all users
-    if (!user.latitude || !user.longitude) {
-        if (user.country) {
-            const countryUsers = await User.find({
-                ...hardBase(user),
-                country: user.country,
-            }).limit(limit).lean();
-            if (countryUsers.length > 0) return countryUsers.map(c => shape(c));
-        }
-        // Final fallback: everyone
-        const fallback = await User.find(hardBase(user)).limit(limit).lean();
-        return fallback.map(c => shape(c));
-    }
+    // Get users they've liked before for pattern matching
+    const likedUsers = await Match.find({ userId, status: { $in: ["liked", "superliked", "matched"] } })
+        .populate("matchedUserId", "interests age gender country city")
+        .lean();
 
-    const DELTA = 0.45; // ~50 km
-    const query = {
-        ...hardBase(user),
-        latitude: { $gte: user.latitude - DELTA, $lte: user.latitude + DELTA },
-        longitude: { $gte: user.longitude - DELTA, $lte: user.longitude + DELTA },
+    // Extract patterns from liked users
+    const likedPatterns = {
+        interests: new Set(),
+        countries: new Set(),
+        cities: new Set(),
     };
+    likedUsers.forEach(m => {
+        const u = m.matchedUserId;
+        if (u?.interests) u.interests.forEach(i => likedPatterns.interests.add(i));
+        if (u?.country) likedPatterns.countries.add(u.country);
+        if (u?.city) likedPatterns.cities.add(u.city);
+    });
 
-    const users = await User.find(query).limit(limit).lean();
-    logDiscovery("nearby", query, users.length);
+    const recommendations = await getDailyRecommendations(userId, limit * 3);
 
-    // Fallback to same-country if no one nearby
-    if (users.length === 0 && user.country) {
-        const countryFallback = await User.find({
-            ...hardBase(user),
-            country: user.country,
-        }).limit(limit).lean();
-        return countryFallback.map(c => shape(c));
-    }
+    // Boost users matching liked patterns
+    recommendations.sort((a, b) => {
+        let aBoost = 0, bBoost = 0;
+        if (a.interests?.some(i => likedPatterns.interests.has(i))) aBoost += 15;
+        if (b.interests?.some(i => likedPatterns.interests.has(i))) bBoost += 15;
+        if (likedPatterns.countries.has(a.country)) aBoost += 10;
+        if (likedPatterns.countries.has(b.country)) bBoost += 10;
+        if (likedPatterns.cities.has(a.city)) aBoost += 5;
+        if (likedPatterns.cities.has(b.city)) bBoost += 5;
+        return (b.compatibilityScore + bBoost) - (a.compatibilityScore + aBoost);
+    });
 
-    return users.map(c => shape(c));
+    return recommendations.slice(0, limit);
 };
 
-// ── Compatibility scoring ─────────────────────────────────────────────────────
-const scoreCompatibility = (user, c) => {
-    let s = 50;
-    const shared = (user.interests || []).filter(i => (c.interests || []).includes(i)).length;
-    s += Math.min(40, shared * 8);
-    if (user.age && c.age) {
-        const ageDiff = Math.abs(user.age - c.age);
-        s += Math.max(0, 10 - ageDiff * 1.2);
-    }
-    if (user.relationshipGoal && user.relationshipGoal === c.relationshipGoal) s += 20;
-    if (user.religion && user.religion === c.religion) s += 12;
-    if (user.wantsChildren && user.wantsChildren === c.wantsChildren) s += 10;
-    if (user.smoking && user.smoking === c.smoking) s += 5;
-    if (user.drinking && user.drinking === c.drinking) s += 5;
-    s += Math.round((c.profileCompletion || 0) * 0.08);
-    if (c.isPremium) s += 5;
-    if (c.memberSince) {
-        const days = (Date.now() - new Date(c.memberSince).getTime()) / 86400000;
-        if (days < 7) s += 8;
-    }
-    return s;
+// ─── Get Match Score Explanation ──────────────────────────────────────────────
+export const getMatchScoreExplanation = async (userId, targetUserId) => {
+    const [user, target] = await Promise.all([
+        User.findById(userId).lean(),
+        User.findById(targetUserId).lean(),
+    ]);
+    if (!user || !target) return { score: 0, reasons: [] };
+
+    return calculateCompatibility(user, target);
 };
 
-export const calculateCompatibility = (u1, u2) =>
-    Math.min(100, Math.max(0, Math.round(scoreCompatibility(u1, u2))));
+// ─── Helper: Haversine distance ───────────────────────────────────────────────
+const getDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+};
+
+export default {
+    calculateCompatibility,
+    getDailyRecommendations,
+    getSuggestedMatches,
+    getNearbyUsers,
+    getTrendingProfiles,
+    getRecentlyJoined,
+    getMostActiveUsers,
+    getPersonalizedRecommendations,
+    getMatchScoreExplanation,
+};

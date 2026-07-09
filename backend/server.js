@@ -21,6 +21,13 @@ import adminRoutes from "./routes/adminRoutes.js";
 import discoveryRoutes from "./routes/discoveryRoutes.js";
 import searchRoutes from "./routes/searchRoutes.js";
 import advancedFeaturesRoutes from "./routes/advancedFeaturesRoutes.js";
+import mediaRoutes from "./routes/mediaRoutes.js";
+import coinRoutes from "./routes/coinRoutes.js";
+import giftRoutes from "./routes/giftRoutes.js";
+import referralRoutes from "./routes/referralRoutes.js";
+import storyRoutes from "./routes/storyRoutes.js";
+import safetyRoutes from "./routes/safetyRoutes.js";
+import matchingRoutes from "./routes/matchingRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { verifyEmailService } from "./services/emailService.js";
 import { requestLogger } from "./middleware/requestLogger.js";
@@ -215,56 +222,112 @@ io.on("connection", (socket) => {
         io.to(`user:${uid}`).emit("unread_message_count", { count: unreadCount });
     });
 
-    // ── send_message ───────────────────────────────────────────────────────────
-    socket.on("send_message", async ({ toUserId, content, image, tempId }) => {
-        if (!socket.userId || !toUserId) return;
+    // ── edit_message ──────────────────────────────────────────────────────────
+    socket.on("edit_message", async ({ messageId, content }) => {
+        if (!socket.userId || !messageId || !content) return;
         try {
-            const recipientOnline = onlineUsers.has(toUserId);
+            const message = await Message.findById(messageId);
+            if (!message || message.fromUserId.toString() !== socket.userId) return;
+            if (message.isDeleted) return;
 
-            // Persist message to database
-            const message = new Message({
-                fromUserId: socket.userId,
-                toUserId,
-                content: content || "",
-                image: image || null,
-                messageType: image ? "image" : "text",
-                isDelivered: recipientOnline,
-                deliveredAt: recipientOnline ? new Date() : null,
-            });
+            message.content = content;
+            message.editedAt = new Date();
             await message.save();
 
-            const msg = {
-                _id: message._id,
-                fromUserId: socket.userId,
-                toUserId,
-                content: content || "",
-                image: image || null,
-                tempId,
-                createdAt: message.createdAt.toISOString(),
-                isRead: false,
-                isDelivered: recipientOnline,
-                messageType: image ? "image" : "text",
-            };
+            const recipientId = message.toUserId.toString();
+            io.to(`user:${recipientId}`).emit("message_edited", {
+                messageId: message._id,
+                content,
+                editedAt: message.editedAt,
+            });
+            socket.emit("message_edited", {
+                messageId: message._id,
+                content,
+                editedAt: message.editedAt,
+            });
+        } catch (err) {
+            console.error("[Socket] edit_message error:", err.message);
+        }
+    });
 
-            // Emit to recipient
-            io.to(`user:${toUserId}`).emit("new_message", msg);
+    // ── delete_for_me ──────────────────────────────────────────────────────────
+    socket.on("delete_for_me", async ({ messageId }) => {
+        if (!socket.userId || !messageId) return;
+        try {
+            const message = await Message.findById(messageId);
+            if (!message) return;
+            if (message.fromUserId.toString() !== socket.userId &&
+                message.toUserId.toString() !== socket.userId) return;
 
-            // Emit delivery confirmation if online
-            if (recipientOnline) {
-                io.to(`user:${socket.userId}`).emit("messages_delivered", {
-                    toUserId,
-                    deliveredAt: new Date().toISOString(),
-                });
+            message.deletedFor = message.deletedFor || [];
+            if (!message.deletedFor.includes(socket.userId)) {
+                message.deletedFor.push(socket.userId);
+            }
+            await message.save();
+            socket.emit("message_deleted_for_me", { messageId });
+        } catch (err) {
+            console.error("[Socket] delete_for_me error:", err.message);
+        }
+    });
+
+    // ── delete_for_everyone ────────────────────────────────────────────────────
+    socket.on("delete_for_everyone", async ({ messageId }) => {
+        if (!socket.userId || !messageId) return;
+        try {
+            const message = await Message.findById(messageId);
+            if (!message || message.fromUserId.toString() !== socket.userId) return;
+            if (message.isDeleted) return;
+            // Only allow within 24 hours
+            const age = Date.now() - new Date(message.createdAt).getTime();
+            if (age > 24 * 60 * 60 * 1000) {
+                return socket.emit("message_error", { messageId, error: "Cannot delete messages older than 24 hours" });
             }
 
-            socket.emit("message_sent", { tempId, _id: message._id, createdAt: msg.createdAt });
+            message.isDeleted = true;
+            message.deletedAt = new Date();
+            await message.save();
 
-            // Update unread count for recipient
-            const unreadCount = await getUnreadMessageCount(toUserId);
-            io.to(`user:${toUserId}`).emit("unread_message_count", { count: unreadCount });
+            const recipientId = message.toUserId.toString();
+            io.to(`user:${recipientId}`).emit("message_deleted_for_everyone", { messageId });
+            socket.emit("message_deleted_for_everyone", { messageId });
+        } catch (err) {
+            console.error("[Socket] delete_for_everyone error:", err.message);
+        }
+    });
+
+    // ── send_message (enhanced - supports voice, gif, file, reply, forward) ──
+    socket.on("send_message", async ({ toUserId, content, image, tempId, messageType, voiceNote, fileUrl, fileName, fileSize, gifUrl, replyTo, isForwarded }) => {
+        if (!socket.userId || !toUserId) return;
+        try {
+            // Import chat service dynamically for anti-spampersist
+            const { sendMessage } = await import("./services/chatService.js");
+            const result = await sendMessage({
+                fromUserId: socket.userId,
+                toUserId,
+                content,
+                messageType,
+                image,
+                voiceNote,
+                fileUrl,
+                fileName,
+                fileSize,
+                gifUrl,
+                replyTo,
+                isForwarded,
+                tempId,
+            });
+
+            if (result) {
+                const msg = { ...result, tempId };
+                io.to(`user:${toUserId}`).emit("new_message", msg);
+                socket.emit("message_sent", { tempId, _id: result._id, createdAt: result.createdAt });
+
+                const unreadCount = await getUnreadMessageCount(toUserId);
+                io.to(`user:${toUserId}`).emit("unread_message_count", { count: unreadCount });
+            }
         } catch (err) {
             console.error("[Socket] send_message error:", err.message);
-            socket.emit("message_error", { tempId, error: "Failed to send message" });
+            socket.emit("message_error", { tempId, error: err.message || "Failed to send message" });
         }
     });
 
@@ -432,6 +495,13 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/discover", discoveryRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/advanced", advancedFeaturesRoutes);
+app.use("/api/media", mediaRoutes);
+app.use("/api/coins", coinRoutes);
+app.use("/api/gifts", giftRoutes);
+app.use("/api/referrals", referralRoutes);
+app.use("/api/stories", storyRoutes);
+app.use("/api/safety", safetyRoutes);
+app.use("/api/matching", matchingRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {

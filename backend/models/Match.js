@@ -43,6 +43,10 @@ const matchSchema = new mongoose.Schema(
         // ── Messaging activity ────────────────────────────────────────────────
         messagesSent: { type: Number, default: 0 },
         lastMessageAt: Date,
+
+        // ── Chat preferences ──────────────────────────────────────────────────
+        isPinned: { type: Boolean, default: false },
+        isArchived: { type: Boolean, default: false },
     },
     { timestamps: true }
 );

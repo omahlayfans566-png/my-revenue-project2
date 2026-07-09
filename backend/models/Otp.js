@@ -39,6 +39,11 @@ const otpSchema = new mongoose.Schema(
             type: Boolean,
             default: false,
         },
+        purpose: {
+            type: String,
+            enum: ["email_verification", "2fa", "2fa_enable", "password_reset"],
+            default: "email_verification",
+        },
         // Rate limiting: track resend attempts
         resendCount: {
             type: Number,

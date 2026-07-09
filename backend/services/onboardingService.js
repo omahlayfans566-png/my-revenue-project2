@@ -10,20 +10,31 @@
  *   5. Auto-flag if report threshold already exceeded (edge-case guard)
  */
 
-// Weighted fields that contribute to the completion score
+// Weighted fields that contribute to the completion score (max 100)
 const COMPLETION_WEIGHTS = [
-    { field: "profilePicture", weight: 20 },
-    { field: "aboutMe", weight: 15 },
-    { field: "occupation", weight: 10 },
-    { field: "education", weight: 10 },
-    { field: "interests", weight: 10, isArray: true },
-    { field: "languages", weight: 5, isArray: true },
-    { field: "gender", weight: 5 },
-    { field: "lookingFor", weight: 5 },
-    { field: "country", weight: 5 },
-    { field: "city", weight: 5 },
-    { field: "relationshipGoal", weight: 5 },
-    { field: "religion", weight: 5 },
+    { field: "profilePicture", weight: 12 },
+    { field: "photos", weight: 8, isArray: true, minCount: 2 },
+    { field: "aboutMe", weight: 10 },
+    { field: "occupation", weight: 5 },
+    { field: "education", weight: 5 },
+    { field: "interests", weight: 8, isArray: true },
+    { field: "hobbies", weight: 5, isArray: true },
+    { field: "languages", weight: 3, isArray: true },
+    { field: "gender", weight: 3 },
+    { field: "lookingFor", weight: 3 },
+    { field: "country", weight: 3 },
+    { field: "city", weight: 3 },
+    { field: "relationshipGoal", weight: 4 },
+    { field: "religion", weight: 3 },
+    { field: "height", weight: 3 },
+    { field: "smoking", weight: 2 },
+    { field: "drinking", weight: 2 },
+    { field: "favoriteMusic", weight: 2, isArray: true },
+    { field: "favoriteMovies", weight: 2, isArray: true },
+    { field: "favoriteSports", weight: 2, isArray: true },
+    { field: "dateOfBirth", weight: 3 },
+    { field: "zodiacSign", weight: 2 },
+    { field: "tribe", weight: 3 },
 ];
 
 /**

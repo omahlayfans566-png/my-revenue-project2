@@ -40,6 +40,8 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
     const [unreadMessageCount, setUnreadMessageCount] = useState(0);
     const [premiumStatus, setPremiumStatus] = useState<{ isPremium: boolean; premiumTier: string; premiumExpires: string | null } | null>(null);
     const [suggestionsVersion, setSuggestionsVersion] = useState(0);
+    const [messageReactions, setMessageReactions] = useState<Map<string, { reaction: string; userId: string }>>(new Map());
+    const [messageEdits, setMessageEdits] = useState<Map<string, { content: string; editedAt: string }>>(new Map());
 
     // Increment suggestions version to trigger refetch
     const triggerSuggestionsRefresh = useCallback(() => {

@@ -103,7 +103,8 @@ router.put("/:userId", authenticateToken, async (req, res) => {
         // Strip empty strings from enum fields — sending "" fails Mongoose validation.
         // An empty string means "user didn't select anything", so we simply omit it.
         const ENUM_FIELDS = ["gender", "lookingFor", "education", "smoking",
-            "drinking", "hasChildren", "wantsChildren", "religionImportance"];
+            "drinking", "hasChildren", "wantsChildren", "religionImportance",
+            "zodiacSign", "personalityType", "pets", "lifestyle"];
         ENUM_FIELDS.forEach(k => {
             if (updates[k] === "" || updates[k] === null || updates[k] === undefined) {
                 delete updates[k];

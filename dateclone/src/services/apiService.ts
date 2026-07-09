@@ -88,10 +88,17 @@ export const authAPI = {
         });
     },
 
-    login: async (email: string, password: string) => {
+    login: async (email: string, password: string, rememberMe: boolean = false) => {
         return apiCall("/auth/login", {
             method: "POST",
-            body: JSON.stringify({ email, password }),
+            body: JSON.stringify({ email, password, rememberMe }),
+        });
+    },
+
+    verify2FA: async (userId: string, otp: string, tempToken?: string) => {
+        return apiCall("/auth/verify-2fa", {
+            method: "POST",
+            body: JSON.stringify({ userId, otp, tempToken }),
         });
     },
 
@@ -99,9 +106,107 @@ export const authAPI = {
         return apiCall("/auth/me");
     },
 
-    logout: () => {
+    refreshToken: async (refreshToken: string) => {
+        return apiCall("/auth/refresh", {
+            method: "POST",
+            body: JSON.stringify({ refreshToken }),
+        });
+    },
+
+    logout: async (refreshToken?: string) => {
+        try {
+            if (refreshToken) {
+                await apiCall("/auth/logout", {
+                    method: "POST",
+                    body: JSON.stringify({ refreshToken }),
+                });
+            }
+        } catch { /* ignore */ }
         sessionStorage.removeItem("authToken");
+        sessionStorage.removeItem("refreshToken");
         sessionStorage.removeItem("user");
+    },
+
+    logoutAll: async () => {
+        return apiCall("/auth/logout-all", { method: "POST" });
+    },
+
+    changePassword: async (currentPassword: string, newPassword: string) => {
+        return apiCall("/auth/change-password", {
+            method: "POST",
+            body: JSON.stringify({ currentPassword, newPassword }),
+        });
+    },
+
+    forgotPassword: async (email: string) => {
+        return apiCall("/auth/forgot-password", {
+            method: "POST",
+            body: JSON.stringify({ email }),
+        });
+    },
+
+    resetPassword: async (token: string, password: string) => {
+        return apiCall("/auth/reset-password", {
+            method: "POST",
+            body: JSON.stringify({ token, password }),
+        });
+    },
+
+    changeEmail: async (newEmail: string) => {
+        return apiCall("/auth/change-email", {
+            method: "POST",
+            body: JSON.stringify({ newEmail }),
+        });
+    },
+
+    confirmEmailChange: async (token: string) => {
+        return apiCall("/auth/confirm-email-change", {
+            method: "POST",
+            body: JSON.stringify({ token }),
+        });
+    },
+
+    enable2FA: async () => {
+        return apiCall("/auth/enable-2fa", { method: "POST" });
+    },
+
+    confirmEnable2FA: async (otp: string) => {
+        return apiCall("/auth/confirm-enable-2fa", {
+            method: "POST",
+            body: JSON.stringify({ otp }),
+        });
+    },
+
+    disable2FA: async (password: string) => {
+        return apiCall("/auth/disable-2fa", {
+            method: "POST",
+            body: JSON.stringify({ password }),
+        });
+    },
+
+    getSessions: async () => {
+        return apiCall("/auth/sessions");
+    },
+
+    removeSession: async (token: string) => {
+        return apiCall(`/auth/sessions/${encodeURIComponent(token)}`, {
+            method: "DELETE",
+        });
+    },
+
+    getLoginHistory: async (page: number = 1) => {
+        return apiCall(`/auth/login-history?page=${page}`);
+    },
+
+    getActivityLog: async (page: number = 1) => {
+        return apiCall(`/auth/activity-log?page=${page}`);
+    },
+
+    deleteAccount: async (password: string) => {
+        return apiCall("/auth/delete-account", {
+            method: "DELETE",
+            body: JSON.stringify({ password }),
+        });
     },
 };
 
@@ -187,10 +292,10 @@ export const matchAPI = {
 // ============================================
 
 export const messageAPI = {
-    sendMessage: async (toUserId: string, content: string, image: string | null = null, replyTo?: string) => {
+    sendMessage: async (toUserId: string, content: string, image: string | null = null, options: Record<string, any> = {}) => {
         return apiCall("/messages/send", {
             method: "POST",
-            body: JSON.stringify({ toUserId, content, image, replyTo }),
+            body: JSON.stringify({ toUserId, content, image, ...options }),
         });
     },
 
@@ -200,8 +305,11 @@ export const messageAPI = {
         );
     },
 
-    getAllConversations: async (search?: string) => {
-        const query = search ? `?search=${encodeURIComponent(search)}` : "";
+    getAllConversations: async (search?: string, includeArchived?: boolean) => {
+        const params = new URLSearchParams();
+        if (search) params.set("search", search);
+        if (includeArchived) params.set("includeArchived", "true");
+        const query = params.toString() ? `?${params.toString()}` : "";
         return apiCall(`/messages${query}`);
     },
 
@@ -218,8 +326,37 @@ export const messageAPI = {
         });
     },
 
-    searchMessages: async (q: string) => {
-        return apiCall(`/messages/search?q=${encodeURIComponent(q)}`);
+    forwardMessage: async (messageId: string, targetUserId: string) => {
+        return apiCall("/messages/forward", {
+            method: "POST",
+            body: JSON.stringify({ messageId, targetUserId }),
+        });
+    },
+
+    pinConversation: async (targetUserId: string, pinned: boolean) => {
+        return apiCall("/messages/pin", {
+            method: "POST",
+            body: JSON.stringify({ targetUserId, pinned }),
+        });
+    },
+
+    archiveConversation: async (targetUserId: string, archived: boolean) => {
+        return apiCall("/messages/archive", {
+            method: "POST",
+            body: JSON.stringify({ targetUserId, archived }),
+        });
+    },
+
+    getMediaGallery: async (otherUserId: string, page: number = 1, limit: number = 20) => {
+        return apiCall(`/messages/media/${otherUserId}?page=${page}&limit=${limit}`);
+    },
+
+    searchMessages: async (q: string, page: number = 1, limit: number = 30) => {
+        return apiCall(`/messages/search?q=${encodeURIComponent(q)}&page=${page}&limit=${limit}`);
+    },
+
+    exportChatBackup: async () => {
+        return apiCall("/messages/export/backup");
     },
 };
 
@@ -650,6 +787,193 @@ export const discoveryAPI = {
         }),
 };
 
+// ============================================
+// MEDIA ENDPOINTS
+// ============================================
+
+export const mediaAPI = {
+    getPhotos: async () => apiCall("/media/photos"),
+    getUserPhotos: async (userId: string) => apiCall(`/media/photos/${userId}`),
+    uploadPhoto: async (photoData: object) =>
+        apiCall("/media/photos/upload", {
+            method: "POST",
+            body: JSON.stringify(photoData),
+        }),
+    deletePhoto: async (photoId: string) =>
+        apiCall(`/media/photos/${photoId}`, { method: "DELETE" }),
+    setProfilePicture: async (photoId: string) =>
+        apiCall(`/media/photos/${photoId}/set-profile`, { method: "POST" }),
+    setCoverPhoto: async (photoId: string) =>
+        apiCall(`/media/photos/${photoId}/set-cover`, { method: "POST" }),
+    reorderPhotos: async (photoIds: string[]) =>
+        apiCall("/media/photos/reorder", {
+            method: "POST",
+            body: JSON.stringify({ photoIds }),
+        }),
+    getAlbums: async () => apiCall("/media/albums"),
+    getUserAlbums: async (userId: string) => apiCall(`/media/albums/${userId}`),
+    createAlbum: async (albumData: object) =>
+        apiCall("/media/albums", {
+            method: "POST",
+            body: JSON.stringify(albumData),
+        }),
+    addPhotoToAlbum: async (albumId: string, photoId: string) =>
+        apiCall(`/media/albums/${albumId}/photos`, {
+            method: "POST",
+            body: JSON.stringify({ photoId }),
+        }),
+    removePhotoFromAlbum: async (albumId: string, photoId: string) =>
+        apiCall(`/media/albums/${albumId}/photos/${photoId}`, { method: "DELETE" }),
+    unlockAlbum: async (albumId: string) =>
+        apiCall(`/media/albums/${albumId}/unlock`, { method: "POST" }),
+    deleteAlbum: async (albumId: string) =>
+        apiCall(`/media/albums/${albumId}`, { method: "DELETE" }),
+};
+
+// ============================================
+// COIN ENDPOINTS
+// ============================================
+
+export const coinAPI = {
+    getWallet: async () => apiCall("/coins/wallet"),
+    getBalance: async () => apiCall("/coins/balance"),
+    getTransactions: async (page: number = 1) =>
+        apiCall(`/coins/transactions?page=${page}`),
+    getPackages: async () => apiCall("/coins/packages"),
+    purchase: async (packageIndex: number) =>
+        apiCall("/coins/purchase", {
+            method: "POST",
+            body: JSON.stringify({ packageIndex }),
+        }),
+    verify: async (reference: string) =>
+        apiCall("/coins/verify", {
+            method: "POST",
+            body: JSON.stringify({ reference }),
+        }),
+};
+
+// ============================================
+// GIFT ENDPOINTS
+// ============================================
+
+export const giftAPI = {
+    getCatalog: async () => apiCall("/gifts/catalog"),
+    sendGift: async (toUserId: string, giftName: string, options: object = {}) =>
+        apiCall("/gifts/send", {
+            method: "POST",
+            body: JSON.stringify({ toUserId, giftName, ...options }),
+        }),
+    getReceived: async (page: number = 1) =>
+        apiCall(`/gifts/received?page=${page}`),
+    getSent: async (page: number = 1) =>
+        apiCall(`/gifts/sent?page=${page}`),
+};
+
+// ============================================
+// REFERRAL ENDPOINTS
+// ============================================
+
+export const referralAPI = {
+    getCode: async () => apiCall("/referrals/code"),
+    generateCode: async () =>
+        apiCall("/referrals/code/generate", { method: "POST" }),
+    useCode: async (code: string) =>
+        apiCall("/referrals/use", {
+            method: "POST",
+            body: JSON.stringify({ code }),
+        }),
+    getAnalytics: async () => apiCall("/referrals/analytics"),
+    getGlobalStats: async () => apiCall("/referrals/global-stats"),
+};
+
+// ============================================
+// STORY ENDPOINTS
+// ============================================
+
+export const safetyAPI = {
+    getCategories: async () => apiCall("/safety/categories"),
+    getTips: async () => apiCall("/safety/tips"),
+    reportUser: async (reportedUserId: string, category: string, description: string = "") =>
+        apiCall("/safety/report", {
+            method: "POST",
+            body: JSON.stringify({ reportedUserId, category, description }),
+        }),
+    checkFakeProfile: async () =>
+        apiCall("/safety/check-fake", { method: "POST" }),
+    checkDuplicates: async () =>
+        apiCall("/safety/check-duplicates", { method: "POST" }),
+    blockUser: async (userId: string) =>
+        apiCall(`/safety/block/${userId}`, { method: "POST" }),
+    unblockUser: async (userId: string) =>
+        apiCall(`/safety/unblock/${userId}`, { method: "POST" }),
+    getBlocked: async () => apiCall("/safety/blocked"),
+};
+
+export const matchingAPI = {
+    getRecommendations: async (limit?: number) => {
+        const query = limit ? `?limit=${limit}` : "";
+        return apiCall(`/matching/recommendations${query}`);
+    },
+    getSuggested: async (limit?: number) => {
+        const query = limit ? `?limit=${limit}` : "";
+        return apiCall(`/matching/suggested${query}`);
+    },
+    getNearby: async (maxDistance?: number, limit?: number) => {
+        const params = new URLSearchParams();
+        if (maxDistance) params.set("maxDistance", String(maxDistance));
+        if (limit) params.set("limit", String(limit));
+        const query = params.toString() ? `?${params.toString()}` : "";
+        return apiCall(`/matching/nearby${query}`);
+    },
+    getTrending: async (limit?: number) => {
+        const query = limit ? `?limit=${limit}` : "";
+        return apiCall(`/matching/trending${query}`);
+    },
+    getRecentlyJoined: async (limit?: number) => {
+        const query = limit ? `?limit=${limit}` : "";
+        return apiCall(`/matching/recently-joined${query}`);
+    },
+    getMostActive: async (limit?: number) => {
+        const query = limit ? `?limit=${limit}` : "";
+        return apiCall(`/matching/most-active${query}`);
+    },
+    getPersonalized: async (limit?: number) => {
+        const query = limit ? `?limit=${limit}` : "";
+        return apiCall(`/matching/personalized${query}`);
+    },
+    getCompatibility: async (targetUserId: string) => {
+        return apiCall(`/matching/compatibility/${targetUserId}`);
+    },
+};
+
+export const storyAPI = {
+    getStories: async () => apiCall("/stories"),
+    getMyStories: async () => apiCall("/stories/my"),
+    getUserStories: async (userId: string) => apiCall(`/stories/user/${userId}`),
+    createStory: async (storyData: object) =>
+        apiCall("/stories/create", {
+            method: "POST",
+            body: JSON.stringify(storyData),
+        }),
+    viewStory: async (storyId: string) =>
+        apiCall(`/stories/${storyId}/view`, { method: "POST" }),
+    reactToStory: async (storyId: string, reaction: string) =>
+        apiCall(`/stories/${storyId}/react`, {
+            method: "POST",
+            body: JSON.stringify({ reaction }),
+        }),
+    replyToStory: async (storyId: string, message: string) =>
+        apiCall(`/stories/${storyId}/reply`, {
+            method: "POST",
+            body: JSON.stringify({ message }),
+        }),
+    deleteStory: async (storyId: string) =>
+        apiCall(`/stories/${storyId}`, { method: "DELETE" }),
+    getArchived: async () => apiCall("/stories/archived"),
+    archiveStory: async (storyId: string) =>
+        apiCall(`/stories/${storyId}/archive`, { method: "POST" }),
+};
+
 export default {
     authAPI,
     profileAPI,
@@ -659,4 +983,9 @@ export default {
     notificationAPI,
     adminAPI,
     discoveryAPI,
+    mediaAPI,
+    coinAPI,
+    giftAPI,
+    referralAPI,
+    storyAPI,
 };
