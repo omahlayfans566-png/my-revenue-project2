@@ -6,7 +6,7 @@ import { Message } from "../models/Message.js";
 import { User } from "../models/User.js";
 import { Match } from "../models/Match.js";
 import { createNotification } from "./notificationService.js";
-import { loggingService } from "./loggingService.js";
+import { logger as loggingService } from "./loggingService.js";
 
 // ─── Anti-Spam Protection ─────────────────────────────────────────────────────
 const spamCache = new Map(); // userId → { count, resetAt }
@@ -137,7 +137,7 @@ export const sendMessage = async ({ fromUserId, toUserId, content, messageType, 
         referenceModel: "Message",
         icon: messageType === "voice" ? "🎤" : messageType === "gif" ? "🎬" : messageType === "file" ? "📎" : "💬",
         metadata: { fromUserId, conversationId: fromUserId, messageType },
-    }).catch(() => {});
+    }).catch(() => { });
 
     const populated = await Message.findById(message._id)
         .populate("fromUserId", "firstName lastName profilePicture")

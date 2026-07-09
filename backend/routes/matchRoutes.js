@@ -4,10 +4,9 @@ import { Match } from "../models/Match.js";
 import { User } from "../models/User.js";
 import { authenticateToken } from "../middleware/auth.js";
 import {
-    getMatchSuggestions,
     getRecentlyJoined,
-    getRecentlyActive,
-    getNearby,
+    getMostActiveUsers,
+    getNearbyUsers,
     calculateCompatibility,
 } from "../services/matchingService.js";
 import { getSuggestions as getFreshSuggestions, notifySuggestionsChanged } from "../services/suggestionService.js";
@@ -43,7 +42,7 @@ router.get("/recently-joined", authenticateToken, async (req, res) => {
 // ── GET /recently-active ──────────────────────────────────────────────────────
 router.get("/recently-active", authenticateToken, async (req, res) => {
     try {
-        const users = await getRecentlyActive(req.user.userId);
+        const users = await getMostActiveUsers(req.user.userId);
         res.json({ success: true, users });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
@@ -53,7 +52,7 @@ router.get("/recently-active", authenticateToken, async (req, res) => {
 // ── GET /nearby ───────────────────────────────────────────────────────────────
 router.get("/nearby", authenticateToken, async (req, res) => {
     try {
-        const users = await getNearby(req.user.userId);
+        const users = await getNearbyUsers(req.user.userId);
         res.json({ success: true, users });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
