@@ -1,0 +1,120 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   PWA Update Notifier Styles
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.pwa-update-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 9998;
+  background: white;
+  border-top: 1px solid #e5e7eb;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.1);
+  animation: pwaUpdateSlideUp 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes pwaUpdateSlideUp {
+  0% {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pwa-update-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.pwa-update-icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff5f7;
+  border-radius: 10px;
+  color: #ff4081;
+}
+
+.pwa-update-text {
+  flex: 1;
+  font-size: 0.9375rem;
+  color: #1a1a2e;
+  font-weight: 500;
+  margin: 0;
+  min-width: 200px;
+}
+
+.pwa-update-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.pwa-update-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 20px;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.pwa-update-btn-primary {
+  background: linear-gradient(135deg, #ff1744, #ff4081);
+  color: white;
+  box-shadow: 0 4px 12px rgba(255, 23, 68, 0.2);
+}
+
+.pwa-update-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(255, 23, 68, 0.3);
+}
+
+.pwa-update-btn-secondary {
+  background: #f0f0f5;
+  color: #44445a;
+}
+
+.pwa-update-btn-secondary:hover {
+  background: #e4e4ed;
+}
+
+@media (max-width: 640px) {
+  .pwa-update-content {
+    flex-direction: column;
+    text-align: center;
+    padding: 16px;
+  }
+  .pwa-update-text {
+    min-width: 0;
+  }
+  .pwa-update-actions {
+    width: 100%;
+  }
+  .pwa-update-btn {
+    flex: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pwa-update-bar {
+    animation: none;
+  }
+}

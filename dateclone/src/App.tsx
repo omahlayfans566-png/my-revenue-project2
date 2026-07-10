@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, type ReactNode, type ErrorInfo } from "react";
+import React, { lazy, Suspense, useEffect, type ReactNode, type ErrorInfo } from "react";
 import { Route, Routes, Navigate } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import "./App.css";
@@ -254,6 +254,39 @@ function AppRoutes() {
   );
 }
 
+// ─── PWA Components ─────────────────────────────────────────────────────────
+import PwaInstallPrompt from "./component/PwaInstallPrompt";
+import PwaUpdateNotifier from "./component/PwaUpdateNotifier";
+import OnlineStatusManager from "./component/OnlineStatusManager";
+import SkipToContent from "./component/SkipToContent";
+import { useDocumentTitle } from "./hooks/useDocumentTitle";
+import { registerOfflineSync } from "./services/offlineQueue";
+import { useSocket } from "./context/SocketContext";
+
+// ─── App Inner ─────────────────────────────────────────────────────────────────
+function AppInner() {
+  const { unreadMessageCount } = useSocket();
+  useDocumentTitle(unreadMessageCount);
+
+  // Register offline sync on mount
+  useEffect(() => {
+    const cleanup = registerOfflineSync();
+    return cleanup;
+  }, []);
+
+  return (
+    <>
+      <SkipToContent />
+      <main id="main-content">
+        <AppRoutes />
+      </main>
+      <OnlineStatusManager />
+      <PwaInstallPrompt />
+      <PwaUpdateNotifier />
+    </>
+  );
+}
+
 // ─── App ───────────────────────────────────────────────────────────────────────
 function App() {
   return (
@@ -278,7 +311,7 @@ function App() {
               },
             }}
           />
-          <AppRoutes />
+          <AppInner />
         </SocketProvider>
       </AuthProvider>
     </ErrorBoundary>
