@@ -5,6 +5,37 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "https://my-revenue-project2.onrender.com/api";
 
+// ─── Request Cache ────────────────────────────────────────────────────────────
+const requestCache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_TTL = 30000; // 30 seconds
+
+const getCacheKey = (endpoint: string, options: RequestInit = {}): string => {
+    return `${options.method || 'GET'}:${endpoint}:${JSON.stringify(options.body || '')}`;
+};
+
+const getCachedResponse = (key: string): any | null => {
+    const cached = requestCache.get(key);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.data;
+    }
+    requestCache.delete(key);
+    return null;
+};
+
+const setCachedResponse = (key: string, data: any) => {
+    requestCache.set(key, { data, timestamp: Date.now() });
+    // Cleanup old entries
+    if (requestCache.size > 500) {
+        const now = Date.now();
+        for (const [k, v] of requestCache) {
+            if (now - v.timestamp > CACHE_TTL * 2) requestCache.delete(k);
+        }
+    }
+};
+
+// ─── Active request deduplication ─────────────────────────────────────────────
+const pendingRequests = new Map<string, Promise<any>>();
+
 // Helper to get auth token (internal use only)
 const _getToken = (): string | null => sessionStorage.getItem("authToken");
 
@@ -18,41 +49,70 @@ const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any
     const token = _getToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    let response: Response;
+    // Deduplicate concurrent GET requests to the same endpoint
+    const cacheKey = getCacheKey(endpoint, options);
+    const method = (options.method || 'GET').toUpperCase();
+    
+    if (method === 'GET') {
+        const cached = getCachedResponse(cacheKey);
+        if (cached) return cached;
+
+        // Deduplicate in-flight requests
+        const pending = pendingRequests.get(cacheKey);
+        if (pending) return pending;
+    }
+
+    const makeRequest = async () => {
+        let response: Response;
+        try {
+            response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
+        } catch {
+            throw new Error(
+                "Cannot reach the server. Make sure the backend is running " +
+                "(open a terminal in /backend and run: npm run dev)."
+            );
+        }
+
+        let body: any = {};
+        try {
+            body = await response.json();
+        } catch {
+            const statusMessages: Record<number, string> = {
+                502: "Backend server is not running. Open a terminal in /backend and run: npm run dev",
+                503: "Server is temporarily unavailable. Please try again in a moment.",
+                504: "Request timed out. Make sure the backend server is running.",
+                500: "Internal server error. Check the backend terminal for details.",
+                404: "API endpoint not found. Make sure the backend server is running.",
+            };
+            const msg = statusMessages[response.status]
+                ?? `Unexpected server response (status ${response.status}). Make sure the backend is running.`;
+            throw new Error(msg);
+        }
+
+        if (!response.ok) {
+            throw new Error(body.message || `Request failed (${response.status})`);
+        }
+
+        // Cache successful GET responses
+        if (method === 'GET') {
+            setCachedResponse(cacheKey, body);
+        }
+
+        return body;
+    };
+
     try {
-        response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
-    } catch {
-        // Network-level failure — server is completely unreachable
-        throw new Error(
-            "Cannot reach the server. Make sure the backend is running " +
-            "(open a terminal in /backend and run: npm run dev)."
-        );
+        const promise = makeRequest();
+        if (method === 'GET') {
+            pendingRequests.set(cacheKey, promise);
+        }
+        const result = await promise;
+        return result;
+    } finally {
+        if (method === 'GET') {
+            pendingRequests.delete(cacheKey);
+        }
     }
-
-    // Parse JSON — works for both success and error responses
-    let body: any = {};
-    try {
-        body = await response.json();
-    } catch {
-        // Non-JSON response — translate HTTP status codes into human messages
-        const statusMessages: Record<number, string> = {
-            502: "Backend server is not running. Open a terminal in /backend and run: npm run dev",
-            503: "Server is temporarily unavailable. Please try again in a moment.",
-            504: "Request timed out. Make sure the backend server is running.",
-            500: "Internal server error. Check the backend terminal for details.",
-            404: "API endpoint not found. Make sure the backend server is running.",
-        };
-        const msg = statusMessages[response.status]
-            ?? `Unexpected server response (status ${response.status}). Make sure the backend is running.`;
-        throw new Error(msg);
-    }
-
-    if (!response.ok) {
-        // Surface the server's own message directly — includes DB-not-connected, validation errors etc.
-        throw new Error(body.message || `Request failed (${response.status})`);
-    }
-
-    return body;
 };
 
 // ============================================
@@ -347,6 +407,14 @@ export const messageAPI = {
         });
     },
 
+    getArchivedConversations: async (search?: string) => {
+        const params = new URLSearchParams();
+        if (search) params.set("search", search);
+        params.set("includeArchived", "true");
+        const query = params.toString() ? `?${params.toString()}` : "";
+        return apiCall(`/messages${query}`);
+    },
+
     getMediaGallery: async (otherUserId: string, page: number = 1, limit: number = 20) => {
         return apiCall(`/messages/media/${otherUserId}?page=${page}&limit=${limit}`);
     },
@@ -515,10 +583,8 @@ export const clearAuthData = () => {
 // ============================================
 
 export const adminAPI = {
-    // Dashboard
     getDashboard: async () => apiCall("/admin/dashboard"),
 
-    // Users
     getUsers: async (params: Record<string, string | number> = {}) => {
         const queryParams = new URLSearchParams();
         Object.entries(params).forEach(([key, value]) => {
@@ -556,7 +622,6 @@ export const adminAPI = {
     deleteUser: async (userId: string) =>
         apiCall(`/admin/users/${userId}`, { method: "DELETE" }),
 
-    // Reports
     getReports: async (params: Record<string, string | number> = {}) => {
         const queryParams = new URLSearchParams();
         Object.entries(params).forEach(([key, value]) => {
@@ -571,7 +636,6 @@ export const adminAPI = {
             body: JSON.stringify(data),
         }),
 
-    // Announcements
     getAnnouncements: async (params: Record<string, string | number> = {}) => {
         const queryParams = new URLSearchParams();
         Object.entries(params).forEach(([key, value]) => {
@@ -586,7 +650,6 @@ export const adminAPI = {
             body: JSON.stringify(data),
         }),
 
-    // Subscriptions
     getSubscriptions: async (params: Record<string, string | number> = {}) => {
         const queryParams = new URLSearchParams();
         Object.entries(params).forEach(([key, value]) => {
@@ -595,7 +658,6 @@ export const adminAPI = {
         return apiCall(`/admin/subscriptions${queryParams.toString() ? `?${queryParams.toString()}` : ""}`);
     },
 
-    // Logs
     getLogs: async (params: Record<string, string | number> = {}) => {
         const queryParams = new URLSearchParams();
         Object.entries(params).forEach(([key, value]) => {
@@ -604,7 +666,6 @@ export const adminAPI = {
         return apiCall(`/admin/logs${queryParams.toString() ? `?${queryParams.toString()}` : ""}`);
     },
 
-    // Flagged Content
     getFlaggedContent: async (params: Record<string, string | number> = {}) => {
         const queryParams = new URLSearchParams();
         Object.entries(params).forEach(([key, value]) => {
@@ -619,10 +680,8 @@ export const adminAPI = {
             body: JSON.stringify(data),
         }),
 
-    // Analytics
     getAnalytics: async () => apiCall("/admin/analytics"),
 
-    // User actions
     grantPremium: async (userId: string, tier: string = "gold", durationDays: number = 30) =>
         apiCall(`/admin/users/${userId}/grant-premium`, {
             method: "POST",
@@ -647,7 +706,6 @@ export const adminAPI = {
             body: JSON.stringify(data),
         }),
 
-    // Email delivery status
     getEmailStatus: async () => apiCall("/admin/email/status"),
 
     sendTestEmail: async (to: string) =>
@@ -656,21 +714,16 @@ export const adminAPI = {
             body: JSON.stringify({ to }),
         }),
 
-    // Analytics
     getDetailedAnalytics: async () => apiCall("/admin/analytics/detailed"),
 
-    // Revenue
     getRevenue: async () => apiCall("/admin/revenue"),
 
-    // Permanent delete
     permanentDeleteUser: async (userId: string) =>
         apiCall(`/admin/users/${userId}/permanent`, { method: "DELETE" }),
 
-    // Restore user
     restoreUser: async (userId: string) =>
         apiCall(`/admin/users/${userId}/restore`, { method: "POST" }),
 
-    // Deleted users
     getDeletedUsers: async (params: Record<string, string | number> = {}) => {
         const queryParams = new URLSearchParams();
         Object.entries(params).forEach(([key, value]) => {
@@ -679,7 +732,6 @@ export const adminAPI = {
         return apiCall(`/admin/users/deleted/list${queryParams.toString() ? `?${queryParams.toString()}` : ""}`);
     },
 
-    // Chat moderation
     getChatMessages: async (params: Record<string, string | number> = {}) => {
         const queryParams = new URLSearchParams();
         Object.entries(params).forEach(([key, value]) => {
@@ -700,7 +752,6 @@ export const adminAPI = {
             body: JSON.stringify({ reason }),
         }),
 
-    // Image moderation
     getFlaggedPhotos: async (params: Record<string, string | number> = {}) => {
         const queryParams = new URLSearchParams();
         Object.entries(params).forEach(([key, value]) => {
@@ -721,14 +772,12 @@ export const adminAPI = {
             body: JSON.stringify({ reason }),
         }),
 
-    // Push notifications
     sendPushNotification: async (data: Record<string, any>) =>
         apiCall("/admin/push", {
             method: "POST",
             body: JSON.stringify(data),
         }),
 
-    // Admin roles & permissions
     getRoles: async () => apiCall("/admin/roles"),
 
     updateRolePermissions: async (role: string, permissions: string[]) =>
@@ -740,7 +789,6 @@ export const adminAPI = {
     getRolePermissions: async (role: string) =>
         apiCall(`/admin/roles/${role}/permissions`),
 
-    // Profile moderation
     getFlaggedProfiles: async (params: Record<string, string | number> = {}) => {
         const queryParams = new URLSearchParams();
         Object.entries(params).forEach(([key, value]) => {
@@ -755,7 +803,6 @@ export const adminAPI = {
             body: JSON.stringify(data),
         }),
 
-    // Broadcast
     broadcastAnnouncement: async (data: Record<string, any>) =>
         apiCall("/admin/broadcast", {
             method: "POST",
@@ -887,7 +934,7 @@ export const referralAPI = {
 };
 
 // ============================================
-// STORY ENDPOINTS
+// SAFETY ENDPOINTS
 // ============================================
 
 export const safetyAPI = {
@@ -908,6 +955,10 @@ export const safetyAPI = {
         apiCall(`/safety/unblock/${userId}`, { method: "POST" }),
     getBlocked: async () => apiCall("/safety/blocked"),
 };
+
+// ============================================
+// MATCHING ENDPOINTS
+// ============================================
 
 export const matchingAPI = {
     getRecommendations: async (limit?: number) => {
@@ -945,6 +996,10 @@ export const matchingAPI = {
         return apiCall(`/matching/compatibility/${targetUserId}`);
     },
 };
+
+// ============================================
+// STORY ENDPOINTS
+// ============================================
 
 export const storyAPI = {
     getStories: async () => apiCall("/stories"),

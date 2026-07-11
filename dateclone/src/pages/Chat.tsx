@@ -434,6 +434,11 @@ const Chat = () => {
                         </div>
                     )}
 
+                    <div className="chat-archived-link" onClick={() => navigate("/chat/archived")} role="button" tabIndex={0} aria-label="View archived chats"
+                        onKeyDown={e => e.key === "Enter" && navigate("/chat/archived")}>
+                        📂 Archived Chats
+                    </div>
+
                     {convLoading ? (
                         <div className="chat-loading"><div className="discover-spinner" /></div>
                     ) : convs.length === 0 ? (

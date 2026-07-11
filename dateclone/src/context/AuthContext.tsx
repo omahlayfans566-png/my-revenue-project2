@@ -4,6 +4,7 @@ import {
     useState,
     useEffect,
     useCallback,
+    useRef,
     type ReactNode,
 } from "react";
 import {
@@ -37,7 +38,6 @@ export interface AuthUser {
     profileCompletion?: number;
     emailVerified?: boolean;
     twoFactorEnabled?: boolean;
-    // Full profile fields
     aboutMe?: string;
     occupation?: string;
     education?: string;
@@ -76,7 +76,6 @@ export interface AuthUser {
     interests?: string[];
     languages?: string[];
     photos?: string[];
-    // Allow any extra fields
     [key: string]: unknown;
 }
 
@@ -96,7 +95,6 @@ interface AuthContextValue {
     cancel2FA: () => void;
 }
 
-// ─── Context ──────────────────────────────────────────────────────────────────
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export const useAuth = (): AuthContextValue => {
@@ -112,14 +110,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [requires2FA, setRequires2FA] = useState(false);
     const [pendingUserId, setPendingUserId] = useState<string | null>(null);
     const [pendingTempToken, setPendingTempToken] = useState<string | null>(null);
+    const loginInProgress = useRef(false);
+    const initDone = useRef(false);
 
     // On mount: validate stored token against the server
     useEffect(() => {
+        if (initDone.current) return;
+        initDone.current = true;
+        
         const init = async () => {
             const token = getAuthToken();
             if (!token) {
                 setLoading(false);
                 return;
+            }
+            // Use cached user from session storage immediately
+            const cachedUser = getUserFromLocal();
+            if (cachedUser) {
+                setUser(cachedUser);
+                setLoading(false);
             }
             try {
                 const res = await authAPI.getCurrentUser();
@@ -145,23 +154,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }, []);
 
     const login = useCallback(async (email: string, password: string, rememberMe: boolean = false) => {
-        const res = await authAPI.login(email, password, rememberMe);
-
-        // Check if 2FA is required
-        if (res.requires2FA) {
-            setRequires2FA(true);
-            setPendingUserId(res.userId);
-            setPendingTempToken(res.tempToken);
-            return { requires2FA: true };
+        // Prevent duplicate submissions
+        if (loginInProgress.current) {
+            throw new Error("Login already in progress");
         }
+        loginInProgress.current = true;
+        
+        try {
+            const res = await authAPI.login(email, password, rememberMe);
 
-        setAuthToken(res.token);
-        if (res.refreshToken) {
-            sessionStorage.setItem("refreshToken", res.refreshToken);
+            // Check if 2FA is required
+            if (res.requires2FA) {
+                setRequires2FA(true);
+                setPendingUserId(res.userId);
+                setPendingTempToken(res.tempToken);
+                return { requires2FA: true };
+            }
+
+            setAuthToken(res.token);
+            if (res.refreshToken) {
+                sessionStorage.setItem("refreshToken", res.refreshToken);
+            }
+            saveUserToLocal(res.user);
+            setUser(res.user);
+            return { requires2FA: false, user: res.user };
+        } finally {
+            loginInProgress.current = false;
         }
-        saveUserToLocal(res.user);
-        setUser(res.user);
-        return { requires2FA: false, user: res.user };
     }, []);
 
     const verify2FA = useCallback(async (userId: string, otp: string) => {

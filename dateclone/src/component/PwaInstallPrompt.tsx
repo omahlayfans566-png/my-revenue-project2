@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import toast from "react-hot-toast";
 import "../style/pwaInstall.css";
 
+// ─── Type Definitions ──────────────────────────────────────────────────────────
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
@@ -13,147 +15,241 @@ declare global {
   }
 }
 
-const PWA_INSTALL_DISMISSED_KEY = "pwa_install_dismissed";
-const PWA_INSTALL_REMIND_LATER_KEY = "pwa_install_remind_later";
-const PWA_INSTALLED_KEY = "pwa_installed";
-const MIN_INTERACTION_COUNT = 3;
+// ─── Local Storage Keys ────────────────────────────────────────────────────────
+const LS_DISMISSED = "pwa_install_dismissed";
+const LS_REMIND_LATER = "pwa_install_remind_later";
+const LS_INSTALLED = "pwa_installed";
 const REMINDER_DELAY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+// ─── Helper: Check standalone / installed ──────────────────────────────────────
+function isStandalone(): boolean {
+  return (
+    localStorage.getItem(LS_INSTALLED) === "true" ||
+    window.matchMedia("(display-mode: standalone)").matches ||
+    ("standalone" in navigator && (navigator as Navigator & { standalone: boolean }).standalone === true)
+  );
+}
+
+// ─── Helper: Detect iOS Safari (including iPadOS 13+) ──────────────────────────
+function isIOSDevice(): boolean {
+  if (/iPad|iPhone|iPod/.test(navigator.userAgent)) return true;
+  // iPadOS 13+ reports as MacIntel
+  if (
+    navigator.platform === "MacIntel" &&
+    navigator.maxTouchPoints > 1 &&
+    !(window as unknown as Record<string, unknown>).MSStream
+  ) {
+    return true;
+  }
+  return false;
+}
+
+// ─── Helper: Check if browser supports beforeinstallprompt ─────────────────────
+function supportsBeforeInstallPrompt(): boolean {
+  return "onbeforeinstallprompt" in window;
+}
+
+// ─── Helper: Detect in-app browsers (cannot install) ───────────────────────────
+function isInAppBrowser(): boolean {
+  const ua = navigator.userAgent.toLowerCase();
+  return (
+    ua.includes("fbav") ||
+    ua.includes("fban") ||
+    ua.includes("instagram") ||
+    ua.includes("messenger") ||
+    ua.includes("wv") ||
+    /; wv\)/.test(ua)
+  );
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────────
 export default function PwaInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [showPopup, setShowPopup] = useState(false);
-  const [isInstalled, setIsInstalled] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
-  const [interactionCount, setInteractionCount] = useState(0);
+  const [canInstall, setCanInstall] = useState(false);
+  const [showBanner, setShowBanner] = useState(false);
   const [showIOSInstructions, setShowIOSInstructions] = useState(false);
+  const [installed, setInstalled] = useState(() => isStandalone());
+  const [isIOS] = useState(() => isIOSDevice());
+  const mountedRef = useRef(true);
 
-  // Check if already installed
-  useEffect(() => {
-    const isPwaInstalled =
-      localStorage.getItem(PWA_INSTALLED_KEY) === "true" ||
-      (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
-    setIsInstalled(isPwaInstalled);
-  }, []);
+  // ─── Update canInstall based on state ──────────────────────────────────────
+  const updateCanInstall = useCallback(() => {
+    setCanInstall(
+      !installed &&
+      !isInAppBrowser() &&
+      !isStandalone() &&
+      (deferredPrompt !== null || isIOS)
+    );
+  }, [installed, isIOS, deferredPrompt]);
 
-  // Detect iOS Safari
+  // ─── beforeinstallprompt handler ───────────────────────────────────────────
   useEffect(() => {
-    const isIOSDevice =
-      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    setIsIOS(isIOSDevice);
-  }, []);
+    if (installed || isInAppBrowser()) return;
 
-  // Track user interaction for popup timing
-  useEffect(() => {
-    const handleInteraction = () => {
-      setInteractionCount((prev) => {
-        const next = prev + 1;
-        if (next >= MIN_INTERACTION_COUNT) {
-          document.removeEventListener("click", handleInteraction);
-          document.removeEventListener("touchstart", handleInteraction);
-        }
-        return next;
-      });
-    };
-    document.addEventListener("click", handleInteraction);
-    document.addEventListener("touchstart", handleInteraction);
-    return () => {
-      document.removeEventListener("click", handleInteraction);
-      document.removeEventListener("touchstart", handleInteraction);
-    };
-  }, []);
-
-  // Listen for install prompt
-  useEffect(() => {
     const handler = (e: BeforeInstallPromptEvent) => {
       e.preventDefault();
       setDeferredPrompt(e);
     };
+
     window.addEventListener("beforeinstallprompt", handler);
     return () => window.removeEventListener("beforeinstallprompt", handler);
-  }, []);
+  }, [installed]);
 
-  // Listen for app installed
+  // ─── appinstalled handler ──────────────────────────────────────────────────
   useEffect(() => {
     const handler = () => {
-      setIsInstalled(true);
-      setShowPopup(false);
+      setInstalled(true);
       setDeferredPrompt(null);
-      localStorage.setItem(PWA_INSTALLED_KEY, "true");
-      localStorage.removeItem(PWA_INSTALL_DISMISSED_KEY);
-      localStorage.removeItem(PWA_INSTALL_REMIND_LATER_KEY);
+      setShowBanner(false);
+      setShowIOSInstructions(false);
+      localStorage.setItem(LS_INSTALLED, "true");
+      localStorage.removeItem(LS_DISMISSED);
+      localStorage.removeItem(LS_REMIND_LATER);
+
+      // Show success toast
+      toast.success("DateClone has been installed successfully.", {
+        duration: 5000,
+        icon: "🎉",
+        style: {
+          borderRadius: "12px",
+          background: "#1a1a2e",
+          color: "#fff",
+          border: "1px solid rgba(255,255,255,0.1)",
+        },
+      });
     };
+
     window.addEventListener("appinstalled", handler);
     return () => window.removeEventListener("appinstalled", handler);
   }, []);
 
-  // Show popup when conditions are met
+  // ─── Check on mount if display-mode changes ────────────────────────────────
   useEffect(() => {
-    if (isInstalled) return;
-    if (interactionCount < MIN_INTERACTION_COUNT) return;
+    if (installed) return;
+    const mql = window.matchMedia("(display-mode: standalone)");
+    const handler = () => {
+      if (mql.matches) {
+        setInstalled(true);
+        localStorage.setItem(LS_INSTALLED, "true");
+      }
+    };
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, [installed]);
 
-    const dismissed = localStorage.getItem(PWA_INSTALL_DISMISSED_KEY);
-    if (dismissed === "true") return;
+  // ─── Update canInstall when deferredPrompt changes ─────────────────────────
+  useEffect(() => {
+    updateCanInstall();
+  }, [deferredPrompt, updateCanInstall]);
 
-    const remindLater = localStorage.getItem(PWA_INSTALL_REMIND_LATER_KEY);
+  // ─── Show banner after a short delay if eligible ───────────────────────────
+  useEffect(() => {
+    if (installed) return;
+    if (isInAppBrowser()) return;
+
+    const dismissed = localStorage.getItem(LS_DISMISSED) === "true";
+    if (dismissed) return;
+
+    const remindLater = localStorage.getItem(LS_REMIND_LATER);
     if (remindLater) {
       const remindTime = parseInt(remindLater, 10);
       if (Date.now() < remindTime) return;
-      localStorage.removeItem(PWA_INSTALL_REMIND_LATER_KEY);
+      localStorage.removeItem(LS_REMIND_LATER);
     }
 
-    // Show popup after a short delay
+    // Wait 1.5s before showing banner to avoid overwhelming
     const timer = setTimeout(() => {
-      if (isIOS) {
-        setShowIOSInstructions(true);
-      } else if (deferredPrompt) {
-        setShowPopup(true);
+      if (mountedRef.current) {
+        if (isIOS) {
+          setShowIOSInstructions(true);
+        } else if (deferredPrompt) {
+          setShowBanner(true);
+        }
       }
-    }, 500);
+    }, 1500);
 
     return () => clearTimeout(timer);
-  }, [isInstalled, interactionCount, deferredPrompt, isIOS]);
+  }, [installed, deferredPrompt, isIOS]);
 
+  // ─── Cleanup ───────────────────────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // ─── Install handler ───────────────────────────────────────────────────────
   const handleInstall = useCallback(async () => {
     if (!deferredPrompt) return;
     try {
       await deferredPrompt.prompt();
       const result = await deferredPrompt.userChoice;
       if (result.outcome === "accepted") {
-        setIsInstalled(true);
-        localStorage.setItem(PWA_INSTALLED_KEY, "true");
+        setInstalled(true);
+        localStorage.setItem(LS_INSTALLED, "true");
+        setDeferredPrompt(null);
+        setShowBanner(false);
+        toast.success("DateClone has been installed successfully.", {
+          duration: 5000,
+          icon: "🎉",
+        });
+      } else {
+        // User dismissed native prompt — keep floating button
+        setShowBanner(false);
+        setDeferredPrompt(null);
       }
-      setDeferredPrompt(null);
-      setShowPopup(false);
-      localStorage.removeItem(PWA_INSTALL_DISMISSED_KEY);
-      localStorage.removeItem(PWA_INSTALL_REMIND_LATER_KEY);
     } catch (err) {
       console.error("Install prompt failed:", err);
+      setShowBanner(false);
     }
   }, [deferredPrompt]);
 
+  // ─── Dismiss banner (remember permanently) ────────────────────────────────
   const handleDismiss = useCallback(() => {
-    setShowPopup(false);
+    setShowBanner(false);
     setShowIOSInstructions(false);
-    localStorage.setItem(PWA_INSTALL_DISMISSED_KEY, "true");
+    localStorage.setItem(LS_DISMISSED, "true");
   }, []);
 
+  // ─── Remind later ───────────────────────────────────────────────────────────
   const handleRemindLater = useCallback(() => {
-    setShowPopup(false);
+    setShowBanner(false);
     setShowIOSInstructions(false);
-    localStorage.setItem(PWA_INSTALL_REMIND_LATER_KEY, String(Date.now() + REMINDER_DELAY_MS));
+    localStorage.setItem(LS_REMIND_LATER, String(Date.now() + REMINDER_DELAY_MS));
   }, []);
 
-  // If installed, don't render anything
-  if (isInstalled) return null;
+  // ─── Floating button click handler ──────────────────────────────────────────
+  const handleFloatingClick = useCallback(() => {
+    if (isIOS) {
+      setShowIOSInstructions(true);
+    } else if (deferredPrompt) {
+      // Prefer native prompt directly for re-triggering
+      handleInstall();
+    } else {
+      // No deferred prompt — might be a browser that doesn't support it
+      // Show generic install instructions or iOS instructions
+      if (isIOS) {
+        setShowIOSInstructions(true);
+      } else {
+        // For browsers that don't support beforeinstallprompt but can still PWA
+        toast("Open browser menu and tap 'Install' or 'Add to Home Screen'", {
+          icon: "ℹ️",
+          duration: 5000,
+        });
+      }
+    }
+  }, [isIOS, deferredPrompt, handleInstall]);
+
+  // ─── Render Nothing If Installed ────────────────────────────────────────────
+  if (installed) return null;
 
   return (
     <>
-      {/* Floating install button */}
-      {!isInstalled && deferredPrompt && !showPopup && !isIOS && (
+      {/* ── Floating Install Button ──────────────────────────────────────── */}
+      {canInstall && (
         <button
           className="pwa-floating-install"
-          onClick={handleInstall}
+          onClick={handleFloatingClick}
           aria-label="Install DateClone app"
           title="Install DateClone"
         >
@@ -162,13 +258,20 @@ export default function PwaInstallPrompt() {
             <polyline points="7 10 12 15 17 10" />
             <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
-          <span>Install App</span>
+          <span className="pwa-floating-label">Install App</span>
+          <span className="pwa-floating-label-short">Install</span>
         </button>
       )}
 
-      {/* Install popup modal */}
-      {showPopup && (
-        <div className="pwa-popup-overlay" onClick={handleDismiss} role="dialog" aria-modal="true" aria-label="Install DateClone">
+      {/* ── Install Banner Popup ─────────────────────────────────────────── */}
+      {showBanner && (
+        <div
+          className="pwa-popup-overlay"
+          onClick={handleDismiss}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Install DateClone"
+        >
           <div className="pwa-popup" onClick={(e) => e.stopPropagation()}>
             <button className="pwa-popup-close" onClick={handleDismiss} aria-label="Close">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -181,8 +284,22 @@ export default function PwaInstallPrompt() {
             </div>
             <h2 className="pwa-popup-title">Install DateClone</h2>
             <p className="pwa-popup-message">
-              Install DateClone for faster access, instant notifications, and a full-screen app experience.
+              Install DateClone for faster access, offline support, instant notifications, and a full-screen app experience.
             </p>
+            <ul className="pwa-popup-benefits">
+              <li>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff4081" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
+                One-tap access from home screen
+              </li>
+              <li>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff4081" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
+                Works offline and saves data
+              </li>
+              <li>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff4081" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
+                Push notifications for matches & messages
+              </li>
+            </ul>
             <div className="pwa-popup-actions">
               <button className="pwa-popup-btn pwa-popup-btn-primary" onClick={handleInstall}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -190,7 +307,7 @@ export default function PwaInstallPrompt() {
                   <polyline points="7 10 12 15 17 10" />
                   <line x1="12" y1="15" x2="12" y2="3" />
                 </svg>
-                Install
+                Install Now
               </button>
               <button className="pwa-popup-btn pwa-popup-btn-secondary" onClick={handleRemindLater}>
                 Maybe Later
@@ -200,11 +317,17 @@ export default function PwaInstallPrompt() {
         </div>
       )}
 
-      {/* iOS instructions popup */}
+      {/* ── iOS Instructions Popup ────────────────────────────────────────── */}
       {showIOSInstructions && (
-        <div className="pwa-popup-overlay" onClick={() => setShowIOSInstructions(false)} role="dialog" aria-modal="true" aria-label="Install DateClone on iOS">
+        <div
+          className="pwa-popup-overlay"
+          onClick={handleDismiss}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Install DateClone on iOS"
+        >
           <div className="pwa-popup" onClick={(e) => e.stopPropagation()}>
-            <button className="pwa-popup-close" onClick={() => setShowIOSInstructions(false)} aria-label="Close">
+            <button className="pwa-popup-close" onClick={handleDismiss} aria-label="Close">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18" />
                 <line x1="6" y1="6" x2="18" y2="18" />
@@ -214,32 +337,45 @@ export default function PwaInstallPrompt() {
               <span>D</span>
             </div>
             <h2 className="pwa-popup-title">Install DateClone</h2>
+            <p className="pwa-popup-message">
+              Install DateClone on your iPhone or iPad for the best experience — full screen, offline, and notifications.
+            </p>
             <div className="pwa-ios-instructions">
-              <p className="pwa-popup-message">
-                Install DateClone on your iPhone for a full-screen app experience.
-              </p>
               <ol className="pwa-ios-steps">
                 <li>
                   <span className="pwa-ios-step-icon">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M12 6v.01M12 18v.01M6 12h.01M18 12h.01"/></svg>
                   </span>
-                  Tap the <strong>Share</strong> button <span className="pwa-ios-share-icon">⎙</span> in Safari
+                  <div>
+                    Tap the <strong>Share</strong> button{" "}
+                    <span className="pwa-ios-share-icon">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#007aff" strokeWidth="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                    </span>{" "}
+                    in Safari
+                  </div>
                 </li>
                 <li>
                   <span className="pwa-ios-step-icon">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
                   </span>
-                  Scroll down and tap <strong>Add to Home Screen</strong>
+                  <div>
+                    Scroll down and tap <strong>Add to Home Screen</strong>
+                  </div>
                 </li>
                 <li>
                   <span className="pwa-ios-step-icon">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
                   </span>
-                  Tap <strong>Add</strong> in the top-right corner
+                  <div>
+                    Tap <strong>Add</strong> in the top-right corner
+                  </div>
                 </li>
               </ol>
             </div>
             <div className="pwa-popup-actions">
+              <button className="pwa-popup-btn pwa-popup-btn-primary" onClick={handleDismiss}>
+                Got it
+              </button>
               <button className="pwa-popup-btn pwa-popup-btn-secondary" onClick={handleRemindLater}>
                 Maybe Later
               </button>
@@ -251,30 +387,30 @@ export default function PwaInstallPrompt() {
   );
 }
 
-// Hook to check if app is installed
+// ─── Hook: Check if PWA is installed ───────────────────────────────────────────
 export function useIsPwaInstalled(): boolean {
-  const [installed, setInstalled] = useState(false);
+  const [installed, setInstalled] = useState(() => isStandalone());
 
   useEffect(() => {
-    const check = () => {
-      const isInstalled =
-        localStorage.getItem(PWA_INSTALLED_KEY) === "true" ||
-        (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
-      setInstalled(isInstalled);
-    };
-    check();
+    const check = () => setInstalled(isStandalone());
     window.addEventListener("appinstalled", check);
-    return () => window.removeEventListener("appinstalled", check);
+    const mql = window.matchMedia("(display-mode: standalone)");
+    mql.addEventListener("change", check);
+    return () => {
+      window.removeEventListener("appinstalled", check);
+      mql.removeEventListener("change", check);
+    };
   }, []);
 
   return installed;
 }
 
-// Hook to get install prompt
+// ─── Hook: Install prompt for manual triggering ────────────────────────────────
 export function useInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
 
   useEffect(() => {
+    if (isStandalone()) return;
     const handler = (e: BeforeInstallPromptEvent) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -289,7 +425,7 @@ export function useInstallPrompt() {
       await deferredPrompt.prompt();
       const result = await deferredPrompt.userChoice;
       if (result.outcome === "accepted") {
-        localStorage.setItem(PWA_INSTALLED_KEY, "true");
+        localStorage.setItem(LS_INSTALLED, "true");
         return true;
       }
     } catch (err) {

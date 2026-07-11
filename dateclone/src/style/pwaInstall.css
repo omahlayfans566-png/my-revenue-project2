@@ -23,6 +23,9 @@
   box-shadow: 0 8px 24px rgba(255, 23, 68, 0.35);
   transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   animation: pwaFloatingIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  white-space: nowrap;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .pwa-floating-install:hover {
@@ -38,6 +41,10 @@
   width: 20px;
   height: 20px;
   flex-shrink: 0;
+}
+
+.pwa-floating-label-short {
+  display: none;
 }
 
 @keyframes pwaFloatingIn {
@@ -63,8 +70,11 @@
     padding: 10px 16px;
     font-size: 0.8125rem;
   }
-  .pwa-floating-install span {
+  .pwa-floating-label {
     display: none;
+  }
+  .pwa-floating-label-short {
+    display: inline;
   }
   .pwa-floating-install {
     width: 48px;
@@ -76,6 +86,39 @@
   .pwa-floating-install svg {
     width: 22px;
     height: 22px;
+  }
+}
+
+/* Tablet adjustments */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .pwa-floating-install {
+    bottom: 84px;
+    right: 24px;
+    padding: 12px 20px;
+  }
+}
+
+/* Large desktop */
+@media (min-width: 1440px) {
+  .pwa-floating-install {
+    bottom: 40px;
+    right: 40px;
+    padding: 14px 24px;
+    font-size: 0.9375rem;
+  }
+}
+
+/* Foldable / very small screens */
+@media (max-width: 360px) {
+  .pwa-floating-install {
+    bottom: 72px;
+    right: 12px;
+    width: 44px;
+    height: 44px;
+  }
+  .pwa-floating-install svg {
+    width: 20px;
+    height: 20px;
   }
 }
 
@@ -110,6 +153,8 @@
   text-align: center;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.2);
   animation: pwaPopupIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 @keyframes pwaPopupIn {
@@ -180,7 +225,33 @@
   font-size: 0.9375rem;
   color: #6b6b80;
   line-height: 1.6;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
+}
+
+/* ── Benefits List ─────────────────────────────────────────────────────────── */
+.pwa-popup-benefits {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+}
+
+.pwa-popup-benefits li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.875rem;
+  color: #44445a;
+  line-height: 1.4;
+}
+
+.pwa-popup-benefits li svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
 }
 
 /* ── Actions ───────────────────────────────────────────────────────────────── */
@@ -279,8 +350,13 @@
 }
 
 .pwa-ios-share-icon {
-  font-size: 1.2rem;
-  display: inline-block;
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.pwa-ios-share-icon svg {
+  width: 18px;
+  height: 18px;
 }
 
 /* ── Responsive ────────────────────────────────────────────────────────────── */
@@ -289,6 +365,7 @@
     max-width: 100%;
     padding: 32px 20px 24px;
     border-radius: 20px;
+    margin: 0 8px;
   }
   .pwa-popup-icon {
     width: 60px;
@@ -300,6 +377,54 @@
   }
   .pwa-popup-title {
     font-size: 1.25rem;
+  }
+  .pwa-popup-message {
+    font-size: 0.875rem;
+  }
+  .pwa-popup-benefits li {
+    font-size: 0.8125rem;
+  }
+}
+
+/* Tablet popup */
+@media (min-width: 481px) and (max-width: 1024px) {
+  .pwa-popup {
+    max-width: 420px;
+    padding: 40px 32px 28px;
+  }
+}
+
+/* Large desktop popup */
+@media (min-width: 1440px) {
+  .pwa-popup {
+    max-width: 440px;
+    padding: 48px 36px 32px;
+  }
+  .pwa-popup-title {
+    font-size: 1.5rem;
+  }
+}
+
+/* Foldable / very small screens */
+@media (max-width: 360px) {
+  .pwa-popup {
+    padding: 24px 16px 20px;
+    border-radius: 16px;
+  }
+  .pwa-popup-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 13px;
+  }
+  .pwa-popup-icon span {
+    font-size: 26px;
+  }
+  .pwa-popup-title {
+    font-size: 1.125rem;
+  }
+  .pwa-popup-btn {
+    padding: 11px 20px;
+    font-size: 0.875rem;
   }
 }
 

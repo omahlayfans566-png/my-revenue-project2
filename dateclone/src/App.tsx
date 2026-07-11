@@ -17,6 +17,7 @@ const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Discover = lazy(() => import("./pages/Discover"));
 const Matches = lazy(() => import("./pages/Matches"));
 const Chat = lazy(() => import("./pages/Chat"));
+const ArchivedChats = lazy(() => import("./pages/ArchivedChats"));
 const Notifications = lazy(() => import("./pages/Notifications"));
 const Profile = lazy(() => import("./pages/Profile"));
 const EditProfile = lazy(() => import("./pages/EditProfile"));
@@ -188,6 +189,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <Chat />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/chat/archived"
+          element={
+            <ProtectedRoute>
+              <ArchivedChats />
             </ProtectedRoute>
           }
         />

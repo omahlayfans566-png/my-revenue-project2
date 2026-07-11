@@ -55,17 +55,13 @@
       "browserRequirements": "Requires JavaScript"
     }
     </script>
-    <!-- Service Worker Registration -->
+    <!-- Service Worker is registered automatically by vite-plugin-pwa -->
     <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').then(reg => {
-            console.log('[SW] Registered:', reg.scope);
-          }).catch(err => {
-            console.log('[SW] Registration skipped:', err.message);
-          });
-        });
-      }
+      // Prevent default browser install prompt from showing by default
+      // We handle it manually via our component
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+      });
     </script>
   </head>
   <body>

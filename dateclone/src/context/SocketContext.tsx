@@ -10,13 +10,14 @@ interface SocketContextValue {
     lastSeen: Map<string, string>;
     deliveredMessages: Map<string, string>;
     unreadMessageCount: number;
+    archivedUnreadCount: number;
     sendMessage: (toUserId: string, content: string, image?: string, tempId?: string) => void;
     startTyping: (toUserId: string) => void;
     stopTyping: (toUserId: string) => void;
     markRead: (fromUserId: string) => void;
     requestUnreadCount: () => void;
     premiumStatus: { isPremium: boolean; premiumTier: string; premiumExpires: string | null } | null;
-    suggestionsVersion: number; // Incremented when suggestions should be refetched
+    suggestionsVersion: number;
 }
 
 const SocketContext = createContext<SocketContextValue | null>(null);
@@ -38,12 +39,11 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
     const [lastSeen, setLastSeen] = useState<Map<string, string>>(new Map());
     const [deliveredMessages, setDeliveredMessages] = useState<Map<string, string>>(new Map());
     const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+    const [archivedUnreadCount, setArchivedUnreadCount] = useState(0);
     const [premiumStatus, setPremiumStatus] = useState<{ isPremium: boolean; premiumTier: string; premiumExpires: string | null } | null>(null);
     const [suggestionsVersion, setSuggestionsVersion] = useState(0);
-    const [messageReactions, setMessageReactions] = useState<Map<string, { reaction: string; userId: string }>>(new Map());
-    const [messageEdits, setMessageEdits] = useState<Map<string, { content: string; editedAt: string }>>(new Map());
+    const reconnectAttempts = useRef(0);
 
-    // Increment suggestions version to trigger refetch
     const triggerSuggestionsRefresh = useCallback(() => {
         setSuggestionsVersion(prev => prev + 1);
     }, []);
@@ -60,6 +60,7 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (socketRef.current?.connected) return;
+        reconnectAttempts.current = 0;
 
         const token = getAuthToken();
         const newSocket = io(SOCKET_URL, {
@@ -75,37 +76,29 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
         socketRef.current = newSocket;
 
         newSocket.on("connect", () => {
-            console.log("[Socket] Connected");
             setConnected(true);
             setSocket(newSocket);
+            reconnectAttempts.current = 0;
             newSocket.emit("user_online", { userId: user._id });
-            // Request unread count on reconnect
             newSocket.emit("get_unread_counts");
-            // Refresh suggestions on reconnect
             triggerSuggestionsRefresh();
         });
 
-        newSocket.on("disconnect", (reason) => {
-            console.log("[Socket] Disconnected:", reason);
+        newSocket.on("disconnect", () => {
             setConnected(false);
         });
 
-        newSocket.on("connect_error", (err) => {
-            console.error("[Socket] Connection error:", err.message);
+        newSocket.on("connect_error", () => {
             setConnected(false);
+            reconnectAttempts.current++;
         });
 
-        newSocket.on("reconnect", (attempt) => {
-            console.log(`[Socket] Reconnected after ${attempt} attempts`);
+        newSocket.on("reconnect", () => {
             setConnected(true);
+            reconnectAttempts.current = 0;
             newSocket.emit("user_online", { userId: user._id });
             newSocket.emit("get_unread_counts");
-            // Refresh suggestions on reconnect
             triggerSuggestionsRefresh();
-        });
-
-        newSocket.on("reconnect_attempt", (attempt) => {
-            console.log(`[Socket] Reconnect attempt #${attempt}`);
         });
 
         newSocket.on("user_status", ({ userId, online }: { userId: string; online: boolean }) => {
@@ -132,44 +125,32 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
             });
         });
 
-        newSocket.on("unread_message_count", ({ count }: { count: number }) => {
+        newSocket.on("unread_message_count", ({ count, archivedCount }: { count: number; archivedCount?: number }) => {
             setUnreadMessageCount(count);
+            if (archivedCount !== undefined) setArchivedUnreadCount(archivedCount);
         });
 
-        // ── premium_status_changed ────────────────────────────────────────────
         newSocket.on("premium_status_changed", (data: { isPremium: boolean; premiumTier: string; premiumExpires: string | null }) => {
             setPremiumStatus(data);
         });
 
-        // ── like_status ──────────────────────────────────────────────────────────
-        newSocket.on("like_status", ({ targetUserId, liked, isMatch }: { targetUserId: string; liked: boolean; isMatch: boolean }) => {
-            console.log(`[Socket] like_status: ${targetUserId} liked=${liked} isMatch=${isMatch}`);
-            // Trigger a suggestion refresh so liked users update in real-time
+        newSocket.on("like_status", () => {
             triggerSuggestionsRefresh();
         });
 
-        // ── Suggestion-related events: trigger refetch on ANY of these ────────
         const suggestionEvents = [
-            "suggestions_updated",
-            "user_registered",
-            "profile_updated",
-            "profile_photo_uploaded",
-            "user_deleted",
-            "user_banned",
-            "user_unbanned",
-            "user_activated",
-            "profile_completed",
+            "suggestions_updated", "user_registered", "profile_updated",
+            "profile_photo_uploaded", "user_deleted", "user_banned",
+            "user_unbanned", "user_activated", "profile_completed",
         ];
 
         suggestionEvents.forEach(event => {
             newSocket.on(event, () => {
-                console.log(`[Socket] Received ${event} — refreshing suggestions`);
                 triggerSuggestionsRefresh();
             });
         });
 
         return () => {
-            console.log("[Socket] Cleaning up connection");
             newSocket.disconnect();
             socketRef.current = null;
             setSocket(null);
@@ -205,6 +186,7 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
             lastSeen,
             deliveredMessages,
             unreadMessageCount,
+            archivedUnreadCount,
             sendMessage,
             startTyping,
             stopTyping,
