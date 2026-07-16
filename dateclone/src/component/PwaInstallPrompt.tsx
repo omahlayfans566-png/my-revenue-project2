@@ -12,6 +12,10 @@ declare global {
   interface WindowEventMap {
     beforeinstallprompt: BeforeInstallPromptEvent;
     appinstalled: Event;
+    "pwa-install-ready": CustomEvent<BeforeInstallPromptEvent>;
+  }
+  interface Window {
+    __deferredPrompt: BeforeInstallPromptEvent | null;
   }
 }
 
@@ -44,11 +48,6 @@ function isIOSDevice(): boolean {
   return false;
 }
 
-// ─── Helper: Check if browser supports beforeinstallprompt ─────────────────────
-function supportsBeforeInstallPrompt(): boolean {
-  return "onbeforeinstallprompt" in window;
-}
-
 // ─── Helper: Detect in-app browsers (cannot install) ───────────────────────────
 function isInAppBrowser(): boolean {
   const ua = navigator.userAgent.toLowerCase();
@@ -62,6 +61,11 @@ function isInAppBrowser(): boolean {
   );
 }
 
+// ─── Helper: Check if browser supports beforeinstallprompt ─────────────────────
+function supportsBeforeInstallPrompt(): boolean {
+  return "onbeforeinstallprompt" in window;
+}
+
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function PwaInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -72,17 +76,30 @@ export default function PwaInstallPrompt() {
   const [isIOS] = useState(() => isIOSDevice());
   const mountedRef = useRef(true);
 
-  // ─── Update canInstall based on state ──────────────────────────────────────
-  const updateCanInstall = useCallback(() => {
-    setCanInstall(
-      !installed &&
-      !isInAppBrowser() &&
-      !isStandalone() &&
-      (deferredPrompt !== null || isIOS)
-    );
-  }, [installed, isIOS, deferredPrompt]);
+  // ─── CRITICAL: Recover deferredPrompt from window.__deferredPrompt on mount ──
+  // The beforeinstallprompt event fires BEFORE React loads. The inline script
+  // in index.html saves it to window.__deferredPrompt. We recover it here.
+  useEffect(() => {
+    if (installed) return;
+    if (window.__deferredPrompt) {
+      setDeferredPrompt(window.__deferredPrompt);
+      window.__deferredPrompt = null; // clear after recovery
+    }
+  }, [installed]);
 
-  // ─── beforeinstallprompt handler ───────────────────────────────────────────
+  // ─── Listen for custom pwa-install-ready event (fallback) ────────────────────
+  useEffect(() => {
+    if (installed) return;
+
+    const handler = (e: CustomEvent<BeforeInstallPromptEvent>) => {
+      setDeferredPrompt(e.detail);
+    };
+
+    window.addEventListener("pwa-install-ready", handler as EventListener);
+    return () => window.removeEventListener("pwa-install-ready", handler as EventListener);
+  }, [installed]);
+
+  // ─── beforeinstallprompt handler (direct, in case React mounts before event) ─
   useEffect(() => {
     if (installed || isInAppBrowser()) return;
 
@@ -106,7 +123,6 @@ export default function PwaInstallPrompt() {
       localStorage.removeItem(LS_DISMISSED);
       localStorage.removeItem(LS_REMIND_LATER);
 
-      // Show success toast
       toast.success("DateClone has been installed successfully.", {
         duration: 5000,
         icon: "🎉",
@@ -136,6 +152,18 @@ export default function PwaInstallPrompt() {
     mql.addEventListener("change", handler);
     return () => mql.removeEventListener("change", handler);
   }, [installed]);
+
+  // ─── Update canInstall based on state ──────────────────────────────────────
+  const updateCanInstall = useCallback(() => {
+    const hasPrompt = deferredPrompt !== null;
+    const canShowPrompt = supportsBeforeInstallPrompt() ? hasPrompt : false;
+    setCanInstall(
+      !installed &&
+      !isInAppBrowser() &&
+      !isStandalone() &&
+      (canShowPrompt || isIOS)
+    );
+  }, [installed, isIOS, deferredPrompt]);
 
   // ─── Update canInstall when deferredPrompt changes ─────────────────────────
   useEffect(() => {
@@ -180,29 +208,47 @@ export default function PwaInstallPrompt() {
 
   // ─── Install handler ───────────────────────────────────────────────────────
   const handleInstall = useCallback(async () => {
-    if (!deferredPrompt) return;
+    if (!deferredPrompt) {
+      // Try to recover one more time
+      if (window.__deferredPrompt) {
+        setDeferredPrompt(window.__deferredPrompt);
+        window.__deferredPrompt = null;
+      }
+      // If still null and browser supports it, show banner again
+      if (!window.__deferredPrompt && !isIOS) {
+        toast("Open browser menu and tap 'Install' or 'Add to Home Screen'", {
+          icon: "ℹ️",
+          duration: 5000,
+        });
+        return;
+      }
+    }
+    const promptToUse = deferredPrompt || window.__deferredPrompt;
+    if (!promptToUse) return;
     try {
-      await deferredPrompt.prompt();
-      const result = await deferredPrompt.userChoice;
+      await promptToUse.prompt();
+      const result = await promptToUse.userChoice;
       if (result.outcome === "accepted") {
         setInstalled(true);
         localStorage.setItem(LS_INSTALLED, "true");
         setDeferredPrompt(null);
+        window.__deferredPrompt = null;
         setShowBanner(false);
         toast.success("DateClone has been installed successfully.", {
           duration: 5000,
           icon: "🎉",
         });
       } else {
-        // User dismissed native prompt — keep floating button
+        // User dismissed native prompt — keep floating button but close banner
         setShowBanner(false);
         setDeferredPrompt(null);
+        window.__deferredPrompt = null;
       }
     } catch (err) {
       console.error("Install prompt failed:", err);
       setShowBanner(false);
     }
-  }, [deferredPrompt]);
+  }, [deferredPrompt, isIOS]);
 
   // ─── Dismiss banner (remember permanently) ────────────────────────────────
   const handleDismiss = useCallback(() => {
@@ -223,15 +269,29 @@ export default function PwaInstallPrompt() {
     if (isIOS) {
       setShowIOSInstructions(true);
     } else if (deferredPrompt) {
-      // Prefer native prompt directly for re-triggering
       handleInstall();
+    } else if (window.__deferredPrompt) {
+      // Recover from global and install
+      setDeferredPrompt(window.__deferredPrompt);
+      const prompt = window.__deferredPrompt;
+      window.__deferredPrompt = null;
+      prompt.prompt().then(() => {
+        prompt.userChoice.then((result) => {
+          if (result.outcome === "accepted") {
+            setInstalled(true);
+            localStorage.setItem(LS_INSTALLED, "true");
+            toast.success("DateClone has been installed successfully.", {
+              duration: 5000,
+              icon: "🎉",
+            });
+          }
+        });
+      }).catch(console.error);
     } else {
-      // No deferred prompt — might be a browser that doesn't support it
-      // Show generic install instructions or iOS instructions
+      // For browsers that don't support beforeinstallprompt but can still PWA
       if (isIOS) {
         setShowIOSInstructions(true);
       } else {
-        // For browsers that don't support beforeinstallprompt but can still PWA
         toast("Open browser menu and tap 'Install' or 'Add to Home Screen'", {
           icon: "ℹ️",
           duration: 5000,
@@ -409,6 +469,13 @@ export function useIsPwaInstalled(): boolean {
 export function useInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
 
+  // Recover from global store on mount
+  useEffect(() => {
+    if (window.__deferredPrompt) {
+      setDeferredPrompt(window.__deferredPrompt);
+    }
+  }, []);
+
   useEffect(() => {
     if (isStandalone()) return;
     const handler = (e: BeforeInstallPromptEvent) => {
@@ -420,12 +487,14 @@ export function useInstallPrompt() {
   }, []);
 
   const install = useCallback(async () => {
-    if (!deferredPrompt) return false;
+    const prompt = deferredPrompt || window.__deferredPrompt;
+    if (!prompt) return false;
     try {
-      await deferredPrompt.prompt();
-      const result = await deferredPrompt.userChoice;
+      await prompt.prompt();
+      const result = await prompt.userChoice;
       if (result.outcome === "accepted") {
         localStorage.setItem(LS_INSTALLED, "true");
+        window.__deferredPrompt = null;
         return true;
       }
     } catch (err) {
@@ -434,5 +503,5 @@ export function useInstallPrompt() {
     return false;
   }, [deferredPrompt]);
 
-  return { canInstall: !!deferredPrompt, install };
+  return { canInstall: !!(deferredPrompt || window.__deferredPrompt), install };
 }

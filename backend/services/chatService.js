@@ -8,6 +8,58 @@ import { Match } from "../models/Match.js";
 import { createNotification } from "./notificationService.js";
 import { logger as loggingService } from "./loggingService.js";
 
+// ─── Phone Number Detection ─────────────────────────────────────────────────
+const PHONE_REGEX = /(?:(?:\+?\d{1,3}[\s.-]?)?\(?\d{2,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{3,4})/g;
+
+// Unicode homoglyph digits mapping for phone number bypass detection
+const DIGIT_CHARS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+const WORD_DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+const WORD_DIGITS_SHORT = ['z', 'o', 't', 'th', 'f', 'fi', 's', 'se', 'e', 'n'];
+
+export const containsPhoneNumber = (text) => {
+    if (!text || typeof text !== 'string') return false;
+
+    // Step 1: Normalize common separators (spaces, hyphens, dots, commas, brackets)
+    let normalized = text
+        .replace(/[\u200B-\u200D\uFEFF\u00AD\u2060]/g, '') // zero-width chars
+        .replace(/[()\[\]{}]/g, '') // brackets
+        .replace(/[\s.,\-_/\\|;:'"~`!@#$%^&*+=<>?]+/g, ''); // all separators
+
+    // Step 2: Check for word-based phone numbers (zero eight zero etc)
+    const lowerText = text.toLowerCase();
+    let wordCount = 0;
+    for (const word of WORD_DIGITS) {
+        const regex = new RegExp(word, 'gi');
+        const matches = lowerText.match(regex);
+        if (matches) wordCount += matches.length;
+    }
+    if (wordCount >= 7) return true;
+
+    // Step 3: Check normalized text for consecutive digits (phone numbers)
+    const digitSequences = normalized.match(/\d{7,15}/g);
+    if (digitSequences) {
+        for (const seq of digitSequences) {
+            // Must have at least 7 digits to be a phone number
+            if (seq.length >= 7 && seq.length <= 15) {
+                // Check it starts with common prefixes or has enough digits
+                if (/^\+?\d{7,15}$/.test(seq)) return true;
+            }
+        }
+    }
+
+    // Step 4: Apply standard regex
+    const cleaned = text.replace(/[\s.\-()\[\]{}_/\\|,;:'"~`!@#$%^&*+=<>?]+/g, '');
+    const matches = cleaned.match(PHONE_REGEX);
+    if (matches) {
+        for (const m of matches) {
+            const digits = m.replace(/\D/g, '');
+            if (digits.length >= 7 && digits.length <= 15) return true;
+        }
+    }
+
+    return false;
+};
+
 // ─── Anti-Spam Protection ─────────────────────────────────────────────────────
 const spamCache = new Map(); // userId → { count, resetAt }
 
@@ -68,8 +120,32 @@ export const checkDuplicate = async (fromUserId, toUserId, content, fileHash) =>
     return false;
 };
 
+// ─── Edit Message ────────────────────────────────────────────────────────────
+export const editMessage = async ({ userId, messageId, content }) => {
+    const message = await Message.findById(messageId);
+    if (!message) throw new Error("Message not found");
+    if (message.fromUserId.toString() !== userId) throw new Error("You can only edit your own messages");
+    if (message.isDeleted) throw new Error("Cannot edit a deleted message");
+
+    // Sanitize - strip HTML tags and dangerous characters
+    const sanitized = content
+        .replace(/<[^>]*>/g, '')
+        .replace(/[<>"']/g, '');
+
+    message.content = sanitized;
+    message.editedAt = new Date();
+    await message.save();
+
+    const populated = await Message.findById(message._id)
+        .populate("fromUserId", "firstName lastName profilePicture")
+        .populate("toUserId", "firstName lastName profilePicture")
+        .lean();
+
+    return populated;
+};
+
 // ─── Send Message (enhanced) ──────────────────────────────────────────────────
-export const sendMessage = async ({ fromUserId, toUserId, content, messageType, image, voiceNote, fileUrl, fileName, fileSize, gifUrl, replyTo, isForwarded, forwardedFrom, tempId }) => {
+export const sendMessage = async ({ fromUserId, toUserId, content, messageType, image, fileUrl, fileName, fileSize, gifUrl, replyTo, isForwarded, forwardedFrom, tempId }) => {
     // Check match
     const match = await Match.findOne({
         $or: [
@@ -78,6 +154,12 @@ export const sendMessage = async ({ fromUserId, toUserId, content, messageType, 
         ],
     });
     if (!match) throw new Error("Not matched");
+
+    // Phone number check
+    if (content && containsPhoneNumber(content)) {
+        loggingService.warn(`[PhoneBlock] User ${fromUserId} attempted to send phone number to ${toUserId}`);
+        throw new Error("Phone numbers are not allowed");
+    }
 
     // Anti-spam check
     const spamCheck = checkSpam(fromUserId, content);
@@ -96,19 +178,23 @@ export const sendMessage = async ({ fromUserId, toUserId, content, messageType, 
         if (original) {
             replyData = {
                 replyTo: original._id,
-                replyContent: original.content || (original.image ? "[Image]" : original.voiceNote ? "[Voice]" : original.gifUrl ? "[GIF]" : "[File]"),
+                replyContent: original.content || (original.image ? "[Image]" : original.gifUrl ? "[GIF]" : "[File]"),
                 replyFrom: original.fromUserId?.firstName || "Unknown",
             };
         }
     }
 
+    // Sanitize content - strip HTML tags and dangerous characters
+    const sanitizedContent = content ? content
+        .replace(/<[^>]*>/g, '')
+        .replace(/[<>"']/g, '') : "";
+
     const message = new Message({
         fromUserId,
         toUserId,
-        content: content || "",
+        content: sanitizedContent,
         messageType: messageType || "text",
         image: image || null,
-        voiceNote: voiceNote || null,
         fileUrl: fileUrl || null,
         fileName: fileName || null,
         fileSize: fileSize || null,
@@ -135,14 +221,14 @@ export const sendMessage = async ({ fromUserId, toUserId, content, messageType, 
         message: `New message from ${sender?.firstName || "someone"}`,
         referenceId: message._id,
         referenceModel: "Message",
-        icon: messageType === "voice" ? "🎤" : messageType === "gif" ? "🎬" : messageType === "file" ? "📎" : "💬",
+        icon: messageType === "gif" ? "🎬" : messageType === "file" ? "📎" : "💬",
         metadata: { fromUserId, conversationId: fromUserId, messageType },
     }).catch(() => { });
 
     const populated = await Message.findById(message._id)
         .populate("fromUserId", "firstName lastName profilePicture")
         .populate("toUserId", "firstName lastName profilePicture")
-        .populate("replyTo", "content image voiceNote gifUrl fileUrl fromUserId")
+        .populate("replyTo", "content image gifUrl fileUrl fromUserId")
         .lean();
 
     return populated;
@@ -205,7 +291,6 @@ export const getConversations = async (userId, options = {}) => {
                     { image: { $ne: null } },
                     { gifUrl: { $ne: null } },
                     { fileUrl: { $ne: null } },
-                    { voiceNote: { $ne: null } },
                 ],
                 isDeleted: false,
             }).sort({ createdAt: -1 }).limit(50).lean();
@@ -293,7 +378,6 @@ export const forwardMessage = async (userId, messageId, targetUserId) => {
         content: original.content || "",
         messageType: original.messageType,
         image: original.image,
-        voiceNote: original.voiceNote,
         fileUrl: original.fileUrl,
         fileName: original.fileName,
         fileSize: original.fileSize,
@@ -322,7 +406,6 @@ export const getMediaGallery = async (userId, otherUserId, page = 1, limit = 20)
             { image: { $ne: null } },
             { gifUrl: { $ne: null } },
             { fileUrl: { $ne: null } },
-            { voiceNote: { $ne: null } },
         ],
         isDeleted: false,
     })
@@ -340,7 +423,6 @@ export const getMediaGallery = async (userId, otherUserId, page = 1, limit = 20)
             { image: { $ne: null } },
             { gifUrl: { $ne: null } },
             { fileUrl: { $ne: null } },
-            { voiceNote: { $ne: null } },
         ],
         isDeleted: false,
     });
@@ -374,9 +456,7 @@ export const searchMessages = async (userId, query, page = 1, limit = 30) => {
     return { messages, total, page, totalPages: Math.ceil(total / limit) };
 };
 
-// ─── Auto-Reconnect Logic (handled on client) ────────────────────────────────
-
-// ─── Chat Backup Architecture ────────────────────────────────────────────────
+// ─── Chat Backup ────────────────────────────────────────────────────────────
 export const exportChatBackup = async (userId) => {
     const conversations = await getConversations(userId);
     const backup = [];
@@ -416,6 +496,8 @@ export default {
     getConversations,
     checkSpam,
     checkDuplicate,
+    editMessage,
+    containsPhoneNumber,
     pinConversation,
     archiveConversation,
     forwardMessage,

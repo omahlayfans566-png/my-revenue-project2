@@ -14,6 +14,8 @@ import {
     searchMessages,
     exportChatBackup,
     getOrCreateChat,
+    editMessage,
+    containsPhoneNumber,
 } from "../services/chatService.js";
 
 const router = express.Router();
@@ -38,7 +40,7 @@ router.get("/", authenticateToken, async (req, res) => {
 router.post("/send", authenticateToken, async (req, res) => {
     try {
         const { userId } = req.user;
-        const { toUserId, content, image, messageType, voiceNote, fileUrl, fileName, fileSize, gifUrl, replyTo, isForwarded, forwardedFrom, tempId } = req.body;
+        const { toUserId, content, image, messageType, fileUrl, fileName, fileSize, gifUrl, replyTo, isForwarded, forwardedFrom, tempId } = req.body;
 
         if (!toUserId) {
             return res.status(400).json({ success: false, message: "Recipient ID is required" });
@@ -50,7 +52,6 @@ router.post("/send", authenticateToken, async (req, res) => {
             content,
             messageType,
             image,
-            voiceNote,
             fileUrl,
             fileName,
             fileSize,
@@ -79,8 +80,52 @@ router.post("/send", authenticateToken, async (req, res) => {
         console.error("[Send Message]", error);
         const status = error.message === "Not matched" ? 403 :
                        error.message === "Too many messages. Please slow down." ? 429 :
-                       error.message === "Duplicate message" ? 409 : 500;
+                       error.message === "Duplicate message" ? 409 :
+                       error.message === "Phone numbers are not allowed" ? 400 : 500;
         res.status(status).json({ success: false, message: error.message || "Failed to send message" });
+    }
+});
+
+// POST: Edit Message
+router.post("/edit/:messageId", authenticateToken, async (req, res) => {
+    try {
+        const { userId } = req.user;
+        const { messageId } = req.params;
+        const { content } = req.body;
+
+        if (!content || !content.trim()) {
+            return res.status(400).json({ success: false, message: "Content is required" });
+        }
+
+        // Phone number check on edit too
+        if (containsPhoneNumber(content.trim())) {
+            return res.status(400).json({ success: false, message: "Phone numbers are not allowed" });
+        }
+
+        const message = await editMessage({ userId, messageId, content: content.trim() });
+
+        // Emit via Socket.IO
+        if (global.io) {
+            const recipientId = message.toUserId._id ? message.toUserId._id.toString() : message.toUserId.toString();
+            global.io.to(`user:${recipientId}`).emit("message_edited", {
+                messageId: message._id,
+                content: message.content,
+                editedAt: message.editedAt,
+            });
+            global.io.to(`user:${userId}`).emit("message_edited", {
+                messageId: message._id,
+                content: message.content,
+                editedAt: message.editedAt,
+            });
+        }
+
+        res.json({ success: true, message: "Message edited", data: message });
+    } catch (error) {
+        console.error("[Edit Message]", error);
+        const status = error.message === "Message not found" ? 404 :
+                       error.message === "You can only edit your own messages" ? 403 :
+                       error.message === "Cannot edit a deleted message" ? 400 : 500;
+        res.status(status).json({ success: false, message: error.message || "Failed to edit message" });
     }
 });
 
@@ -287,7 +332,7 @@ router.get("/conversation/:otherUserId", authenticateToken, async (req, res) => 
             .skip(skip)
             .limit(parseInt(limit))
             .populate("fromUserId toUserId", "firstName lastName profilePicture")
-            .populate("replyTo", "content image voiceNote gifUrl fileUrl fromUserId")
+            .populate("replyTo", "content image gifUrl fileUrl fromUserId")
             .lean();
 
         const total = await Message.countDocuments({

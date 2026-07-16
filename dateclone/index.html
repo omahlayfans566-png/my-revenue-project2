@@ -2,9 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/pwa-icons/favicon.svg" sizes="any" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/pwa-icons/favicon.svg" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/pwa-icons/apple-touch-icon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/pwa-icons/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/pwa-icons/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/pwa-icons/icon-512.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/pwa-icons/icon-192.png" />
     <link rel="mask-icon" href="/pwa-icons/maskable-icon.svg" color="#FF4081" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
     <meta name="theme-color" content="#FF4081" />
@@ -20,28 +21,28 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="msapplication-TileColor" content="#FF4081" />
-    <meta name="msapplication-TileImage" content="/pwa-icons/icon-192.svg" />
+    <meta name="msapplication-TileImage" content="/pwa-icons/icon-192.png" />
     <meta name="msapplication-config" content="none" />
     <title>DateClone - Find Your Perfect Match</title>
     <!-- Preload critical assets -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="dns-prefetch" href="https://my-revenue-project2.onrender.com" />
-    <link rel="preload" href="/pwa-icons/icon-192.svg" as="image" type="image/svg+xml" />
+    <link rel="preload" href="/pwa-icons/icon-192.png" as="image" type="image/png" />
     <link rel="preload" href="/offline.html" as="document" />
     <!-- SEO -->
     <meta property="og:title" content="DateClone - Find Your Perfect Match" />
     <meta property="og:description" content="The premium dating experience across Africa. Meet genuine singles and build meaningful relationships on DateClone." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://my-revenue-project2.onrender.com" />
-    <meta property="og:image" content="/pwa-icons/icon-512.svg" />
+    <meta property="og:image" content="/pwa-icons/icon-512.png" />
     <meta property="og:image:width" content="512" />
     <meta property="og:image:height" content="512" />
     <meta property="og:locale" content="en_US" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="DateClone - Find Your Perfect Match" />
     <meta name="twitter:description" content="The premium dating experience across Africa." />
-    <meta name="twitter:image" content="/pwa-icons/icon-512.svg" />
+    <meta name="twitter:image" content="/pwa-icons/icon-512.png" />
     <!-- Structured Data -->
     <script type="application/ld+json">
     {
@@ -57,10 +58,14 @@
     </script>
     <!-- Service Worker is registered automatically by vite-plugin-pwa -->
     <script>
-      // Prevent default browser install prompt from showing by default
-      // We handle it manually via our component
+      // CRITICAL: Save the beforeinstallprompt event globally so React can access it
+      // The event fires once before React loads, so we must capture it here.
+      window.__deferredPrompt = null;
       window.addEventListener('beforeinstallprompt', (e) => {
         e.preventDefault();
+        window.__deferredPrompt = e;
+        // Dispatch a custom event so React components can react immediately
+        window.dispatchEvent(new CustomEvent('pwa-install-ready', { detail: e }));
       });
     </script>
   </head>

@@ -7,14 +7,48 @@ import { useAuth } from "../context/AuthContext";
 import { useSocket } from "../context/SocketContext";
 import "../style/chat.css";
 
+// ─── Phone Number Detection (frontend) ──────────────────────────────────────
+const WORD_DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+
+const containsPhoneNumber = (text: string): boolean => {
+    if (!text) return false;
+    let normalized = text
+        .replace(/[\u200B-\u200D\uFEFF\u00AD\u2060]/g, '')
+        .replace(/[()\[\]{}]/g, '')
+        .replace(/[\s.,\-_/\\|;:'"~`!@#$%^&*+=<>?]+/g, '');
+    const lowerText = text.toLowerCase();
+    let wordCount = 0;
+    for (const word of WORD_DIGITS) {
+        const matches = lowerText.match(new RegExp(word, 'gi'));
+        if (matches) wordCount += matches.length;
+    }
+    if (wordCount >= 7) return true;
+    const digitSequences = normalized.match(/\d{7,15}/g);
+    if (digitSequences) {
+        for (const seq of digitSequences) {
+            if (seq.length >= 7 && seq.length <= 15 && /^\+?\d+$/.test(seq)) return true;
+        }
+    }
+    const cleaned = text.replace(/[\s.\-()\[\]{}_/\\|,;:'"~`!@#$%^&*+=<>?]+/g, '');
+    const phoneRegex = /(?:(?:\+?\d{1,3}[\s.-]?)?\(?\d{2,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{3,4})/g;
+    const matches = cleaned.match(phoneRegex);
+    if (matches) {
+        for (const m of matches) {
+            const digits = m.replace(/\D/g, '');
+            if (digits.length >= 7 && digits.length <= 15) return true;
+        }
+    }
+    return false;
+};
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Msg {
     _id: string; tempId?: string;
     fromUserId: { _id: string; firstName: string; profilePicture?: string } | string;
     toUserId: { _id: string } | string;
-    content: string; image?: string; voiceNote?: string; fileUrl?: string; fileName?: string; fileSize?: number; gifUrl?: string;
+    content: string; image?: string; fileUrl?: string; fileName?: string; fileSize?: number; gifUrl?: string;
     messageType?: string;
-    createdAt: string; isRead: boolean; isDelivered?: boolean;
+    createdAt: string; editedAt?: string; isRead: boolean; isDelivered?: boolean;
     pending?: boolean;
     reaction?: string | null;
     reactions?: { userId: string; emoji: string }[];
@@ -40,7 +74,7 @@ const Chat = () => {
     const { userId: paramId } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
-    const { socket, connected, onlineUsers, lastSeen, deliveredMessages, unreadMessageCount, sendMessage, startTyping, stopTyping, markRead } = useSocket();
+    const { socket, connected, onlineUsers, lastSeen, deliveredMessages, unreadMessageCount } = useSocket();
 
     const [convs, setConvs] = useState<Conv[]>([]);
     const [activeConv, setActiveConv] = useState<Conv | null>(null);
@@ -49,7 +83,6 @@ const Chat = () => {
     const [convLoading, setConvLoading] = useState(true);
     const [msgLoading, setMsgLoading] = useState(false);
     const [sending, setSending] = useState(false);
-    const [typing, setTyping] = useState(false);
     const [typingFrom, setTypingFrom] = useState<string | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [totalUnread, setTotalUnread] = useState(0);
@@ -68,13 +101,29 @@ const Chat = () => {
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editText, setEditText] = useState("");
+    const [showPhonePopup, setShowPhonePopup] = useState(false);
+    const [showMenuId, setShowMenuId] = useState<string | null>(null);
 
     const bottomRef = useRef<HTMLDivElement>(null);
     const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const fileRef = useRef<HTMLInputElement>(null);
-    const voiceRef = useRef<HTMLInputElement>(null);
     const docRef = useRef<HTMLInputElement>(null);
     const messagesRef = useRef<HTMLDivElement>(null);
+    const editRef = useRef<HTMLTextAreaElement>(null);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    // Close menu on click outside
+    useEffect(() => {
+        const handleClick = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                setShowMenuId(null);
+            }
+        };
+        document.addEventListener("mousedown", handleClick);
+        return () => document.removeEventListener("mousedown", handleClick);
+    }, []);
 
     // ── Load conversations ──────────────────────────────────────────────────────
     const loadConvs = useCallback(async (search?: string) => {
@@ -84,7 +133,6 @@ const Chat = () => {
             const list: Conv[] = res.conversations || [];
             setConvs(list);
             setTotalUnread(list.reduce((s, c) => s + (c.unreadCount || 0), 0));
-
             if (paramId && !search) {
                 const found = list.find(c => c.user._id === paramId);
                 if (found) openConv(found);
@@ -104,14 +152,14 @@ const Chat = () => {
             setActiveConv(conv => {
                 if (conv && conv.user._id === fromId) {
                     setMessages(prev => [...prev, msg]);
-                    markRead(fromId);
+                    socket?.emit("messages_read", { fromUserId: fromId });
                     return conv;
                 }
                 return conv;
             });
             setConvs(prev => prev.map(c =>
                 c.user._id === fromId
-                    ? { ...c, lastMessage: { content: msg.content || (msg.image ? "[Image]" : msg.voiceNote ? "[Voice]" : msg.gifUrl ? "[GIF]" : msg.fileUrl ? "[File]" : ""), createdAt: msg.createdAt }, unreadCount: c.unreadCount + 1 }
+                    ? { ...c, lastMessage: { content: msg.content || (msg.image ? "[Image]" : msg.gifUrl ? "[GIF]" : msg.fileUrl ? "[File]" : ""), createdAt: msg.createdAt }, unreadCount: c.unreadCount + 1 }
                     : c
             ));
             setTotalUnread(n => n + 1);
@@ -152,12 +200,28 @@ const Chat = () => {
             ));
         };
 
+        // ── Edit message socket handler ────────────────────────────────────────
+        const onEdited = ({ messageId, content, editedAt }: { messageId: string; content: string; editedAt: string }) => {
+            setMessages(prev => prev.map(m =>
+                m._id === messageId ? { ...m, content, editedAt } : m
+            ));
+        };
+
+        const onError = (err: { tempId?: string; error: string }) => {
+            if (err.error === "Phone numbers are not allowed") {
+                setShowPhonePopup(true);
+                setMessages(prev => prev.filter(m => m.tempId !== err.tempId));
+            }
+        };
+
         socket.on("new_message", onMsg);
         socket.on("message_sent", onSent);
         socket.on("typing", onTyping);
         socket.on("messages_read_by", onRead);
         socket.on("messages_delivered", onDelivered);
         socket.on("message_reaction", onReaction);
+        socket.on("message_edited", onEdited);
+        socket.on("message_error", onError);
 
         return () => {
             socket.off("new_message", onMsg);
@@ -166,8 +230,10 @@ const Chat = () => {
             socket.off("messages_read_by", onRead);
             socket.off("messages_delivered", onDelivered);
             socket.off("message_reaction", onReaction);
+            socket.off("message_edited", onEdited);
+            socket.off("message_error", onError);
         };
-    }, [socket, markRead]);
+    }, [socket]);
 
     // ── Open conversation ───────────────────────────────────────────────────────
     const openConv = async (conv: Conv) => {
@@ -176,6 +242,7 @@ const Chat = () => {
         setMessages([]);
         setPage(1);
         setHasMore(true);
+        setEditingId(null);
         navigate(`/chat/${conv.user._id}`, { replace: true });
         setConvs(prev => prev.map(c => c._id === conv._id ? { ...c, unreadCount: 0 } : c));
         setTotalUnread(n => Math.max(0, n - (conv.unreadCount || 0)));
@@ -183,7 +250,7 @@ const Chat = () => {
             const res = await messageAPI.getConversation(conv.user._id);
             setMessages(res.messages || []);
             setHasMore(res.totalPages > 1);
-            markRead(conv.user._id);
+            socket?.emit("messages_read", { fromUserId: conv.user._id });
         } catch { setMessages([]); }
         finally { setMsgLoading(false); }
     };
@@ -213,9 +280,16 @@ const Chat = () => {
 
     // ── Send message ─────────────────────────────────────────────────────────────
     const handleSend = async (extraOptions: Record<string, any> = {}) => {
-        if (!input.trim() && !imagePreview && !extraOptions.voiceNote && !extraOptions.fileUrl && !extraOptions.gifUrl) return;
+        if (!input.trim() && !imagePreview && !extraOptions.fileUrl && !extraOptions.gifUrl) return;
         if (!activeConv || sending) return;
         const text = input.trim();
+
+        // Phone number check before sending
+        if (text && containsPhoneNumber(text)) {
+            setShowPhonePopup(true);
+            return;
+        }
+
         const img = imagePreview || undefined;
         const tempId = `temp_${Date.now()}`;
         setInput("");
@@ -230,11 +304,10 @@ const Chat = () => {
             toUserId: activeConv.user._id,
             content: text,
             image: img,
-            voiceNote: extraOptions.voiceNote,
             fileUrl: extraOptions.fileUrl,
             fileName: extraOptions.fileName,
             gifUrl: extraOptions.gifUrl,
-            messageType: extraOptions.messageType || (img ? "image" : extraOptions.voiceNote ? "voice" : extraOptions.gifUrl ? "gif" : extraOptions.fileUrl ? "file" : "text"),
+            messageType: extraOptions.messageType || (img ? "image" : extraOptions.gifUrl ? "gif" : extraOptions.fileUrl ? "file" : "text"),
             createdAt: new Date().toISOString(),
             isRead: false,
             pending: true,
@@ -262,19 +335,24 @@ const Chat = () => {
                     ? { ...c, lastMessage: { content: text || extraOptions.fileName || "[Media]", createdAt: new Date().toISOString() } }
                     : c
             ));
-        } catch { /* silent */ }
+        } catch (err: any) {
+            setMessages(prev => prev.filter(m => m.tempId !== tempId));
+            if (err?.message?.includes("Phone numbers are not allowed")) {
+                setShowPhonePopup(true);
+            }
+        }
         finally { setSending(false); }
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); return; }
         if (!activeConv) return;
-        startTyping(activeConv.user._id);
+        socket?.emit("typing_start", { toUserId: activeConv.user._id });
         if (typingTimer.current !== null) clearTimeout(typingTimer.current);
-        typingTimer.current = setTimeout(() => { stopTyping(activeConv.user._id); }, 2000);
+        typingTimer.current = setTimeout(() => { socket?.emit("typing_stop", { toUserId: activeConv.user._id }); }, 2000);
     };
 
-    // ── Image/File/ voice pick handlers ────────────────────────────────────────
+    // ── Image/File pick handlers ────────────────────────────────────────────────
     const handleImagePick = (e: React.ChangeEvent<HTMLInputElement>) => {
         const f = e.target.files?.[0];
         if (!f) return;
@@ -286,7 +364,6 @@ const Chat = () => {
     const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const f = e.target.files?.[0];
         if (!f) return;
-        // For simplicity, store as base64 - in production use cloudinary upload
         const r = new FileReader();
         r.onloadend = () => {
             handleSend({ fileUrl: r.result, fileName: f.name, fileSize: f.size, messageType: "file" });
@@ -294,17 +371,7 @@ const Chat = () => {
         r.readAsDataURL(f);
     };
 
-    const handleVoicePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const f = e.target.files?.[0];
-        if (!f) return;
-        const r = new FileReader();
-        r.onloadend = () => {
-            handleSend({ voiceNote: r.result, messageType: "voice" });
-        };
-        r.readAsDataURL(f);
-    };
-
-    // ── GIF support (using Tenor/Giphy - simple emoji-based for MVP) ──────────
+    // ── GIF support ──────────────────────────────────────────────────────────
     const quickGifs = ["🎉", "🎊", "🎈", "🎁", "🔥", "💯", "✨", "⭐", "👏", "🙌", "😍", "😂", "🤣", "🥳", "🎂", "🍕", "☕", "🌹", "💕", "💪"];
     const handleGifSelect = (gif: string) => {
         handleSend({ gifUrl: gif, messageType: "gif" });
@@ -319,6 +386,44 @@ const Chat = () => {
             ));
         } catch { /* silent */ }
         setShowReactions(null);
+    };
+
+    // ── Edit Message ──────────────────────────────────────────────────────────
+    const handleEditStart = (msg: Msg) => {
+        setEditingId(msg._id);
+        setEditText(msg.content);
+        setShowMenuId(null);
+        setTimeout(() => editRef.current?.focus(), 50);
+    };
+
+    const handleEditCancel = () => {
+        setEditingId(null);
+        setEditText("");
+    };
+
+    const handleEditSave = async (msgId: string) => {
+        if (!editText.trim() || !activeConv) return;
+        const newContent = editText.trim();
+
+        // Phone check on edit
+        if (containsPhoneNumber(newContent)) {
+            setShowPhonePopup(true);
+            return;
+        }
+
+        try {
+            // Optimistic update
+            setMessages(prev => prev.map(m =>
+                m._id === msgId ? { ...m, content: newContent, editedAt: new Date().toISOString() } : m
+            ));
+            setEditingId(null);
+            setEditText("");
+
+            // API call
+            await messageAPI.editMessage(msgId, newContent);
+            // Socket emit
+            socket?.emit("edit_message", { messageId: msgId, content: newContent });
+        } catch { /* silent */ }
     };
 
     // ── Forward ─────────────────────────────────────────────────────────────────
@@ -575,6 +680,7 @@ const Chat = () => {
                                         const prev = i > 0 ? messages[i - 1] : null;
                                         const showDate = !prev || fmtDate(msg.createdAt) !== fmtDate(prev.createdAt);
                                         const status = getMsgStatus(msg);
+                                        const isEditing = editingId === msg._id;
 
                                         return (
                                             <div key={msg._id} className={`msg-wrapper ${isMe ? "msg-me" : "msg-them"}`}>
@@ -611,55 +717,88 @@ const Chat = () => {
                                                         onContextMenu={e => { e.preventDefault(); setShowReactions(msg._id); }}
                                                     >
                                                         {/* Image */}
-                                                        {msg.image && (
+                                                        {msg.image && !isEditing && (
                                                             <div className={`msg-image-bubble ${isMe ? "bubble-me" : "bubble-them"}`}>
                                                                 <img src={msg.image} alt="shared" onClick={() => window.open(msg.image, "_blank")} loading="lazy" />
                                                             </div>
                                                         )}
                                                         {/* GIF */}
-                                                        {msg.gifUrl && (
+                                                        {msg.gifUrl && !isEditing && (
                                                             <div className={`msg-gif-bubble ${isMe ? "bubble-me" : "bubble-them"}`}>
                                                                 <span style={{ fontSize: "2rem" }}>{msg.gifUrl}</span>
                                                             </div>
                                                         )}
-                                                        {/* Voice note */}
-                                                        {msg.voiceNote && (
-                                                            <div className={`msg-voice-bubble ${isMe ? "bubble-me" : "bubble-them"}`}>
-                                                                <audio controls src={msg.voiceNote} style={{ maxWidth: 200, height: 40 }} />
-                                                            </div>
-                                                        )}
                                                         {/* File */}
-                                                        {msg.fileUrl && (
+                                                        {msg.fileUrl && !isEditing && (
                                                             <div className={`msg-file-bubble ${isMe ? "bubble-me" : "bubble-them"}`}>
                                                                 <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="msg-file-link">
                                                                     📎 {msg.fileName || "File"} {msg.fileSize ? `(${(msg.fileSize / 1024).toFixed(1)} KB)` : ""}
                                                                 </a>
                                                             </div>
                                                         )}
-                                                        {/* Text */}
-                                                        {msg.content && (
-                                                            <div className={`msg-bubble ${isMe ? "bubble-me" : "bubble-them"}`}>
-                                                                {msg.content}
+                                                        {/* Text or Edit input */}
+                                                        {isEditing ? (
+                                                            <div className={`msg-edit-input ${isMe ? "bubble-me" : "bubble-them"}`}>
+                                                                <textarea
+                                                                    ref={editRef}
+                                                                    value={editText}
+                                                                    onChange={e => setEditText(e.target.value)}
+                                                                    onKeyDown={e => {
+                                                                        if (e.key === "Enter" && !e.shiftKey) {
+                                                                            e.preventDefault();
+                                                                            handleEditSave(msg._id);
+                                                                        }
+                                                                        if (e.key === "Escape") handleEditCancel();
+                                                                    }}
+                                                                    rows={2}
+                                                                    aria-label="Edit message"
+                                                                />
+                                                                <div className="msg-edit-actions">
+                                                                    <button className="msg-edit-cancel" onClick={handleEditCancel}>Cancel</button>
+                                                                    <button className="msg-edit-save" onClick={() => handleEditSave(msg._id)} disabled={!editText.trim()}>Save</button>
+                                                                </div>
                                                             </div>
+                                                        ) : (
+                                                            <>
+                                                                {msg.content && (
+                                                                    <div className={`msg-bubble ${isMe ? "bubble-me" : "bubble-them"}`}>
+                                                                        {msg.content}
+                                                                        {msg.editedAt && <span className="msg-edited">(Edited)</span>}
+                                                                    </div>
+                                                                )}
+                                                            </>
                                                         )}
                                                         {/* Reaction */}
-                                                        {msg.reaction && (
+                                                        {msg.reaction && !isEditing && (
                                                             <div className={`msg-reaction ${isMe ? "reaction-me" : "reaction-them"}`}>
                                                                 {msg.reaction}
                                                             </div>
                                                         )}
-                                                        <div className={`msg-meta ${isMe ? "meta-right" : "meta-left"}`}>
-                                                            <span className="msg-time">{fmtTime(msg.createdAt)}</span>
-                                                            {isMe && (
-                                                                <span className="msg-status" title={status.label}>
-                                                                    {status.icon}
-                                                                </span>
-                                                            )}
-                                                            {/* Forward button */}
-                                                            <button className="msg-action-btn" onClick={() => openForward(msg)} title="Forward" aria-label="Forward message">↗️</button>
-                                                            {/* Reaction button */}
-                                                            <button className="msg-action-btn" onClick={() => setShowReactions(showReactions === msg._id ? null : msg._id)} title="React" aria-label="React to message">😊</button>
-                                                        </div>
+                                                        {!isEditing && (
+                                                            <div className={`msg-meta ${isMe ? "meta-right" : "meta-left"}`}>
+                                                                <span className="msg-time">{fmtTime(msg.createdAt)}</span>
+                                                                {isMe && (
+                                                                    <span className="msg-status" title={status.label}>
+                                                                        {status.icon}
+                                                                    </span>
+                                                                )}
+                                                                {/* Three-dot menu button for own messages */}
+                                                                {isMe && (
+                                                                    <button className="msg-action-btn" onClick={() => setShowMenuId(showMenuId === msg._id ? null : msg._id)} title="More" aria-label="More options">⋮</button>
+                                                                )}
+                                                                {/* Forward button */}
+                                                                <button className="msg-action-btn" onClick={() => openForward(msg)} title="Forward" aria-label="Forward message">↗️</button>
+                                                                {/* Reaction button */}
+                                                                <button className="msg-action-btn" onClick={() => setShowReactions(showReactions === msg._id ? null : msg._id)} title="React" aria-label="React to message">😊</button>
+
+                                                                {/* Three-dot menu */}
+                                                                {showMenuId === msg._id && isMe && (
+                                                                    <div className="msg-three-dot-menu" ref={menuRef}>
+                                                                        <button className="msg-three-dot-item" onClick={() => handleEditStart(msg)}>✏️ Edit</button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
 
                                                         {/* Reaction picker */}
                                                         {showReactions === msg._id && (
@@ -724,7 +863,6 @@ const Chat = () => {
                                 onClose={() => setShowEmoji(false)}
                                 onSelect={(emoji) => {
                                     setInput(prev => prev + emoji);
-                                    setShowEmoji(false);
                                 }}
                             />
 
@@ -732,11 +870,9 @@ const Chat = () => {
                             <div className="chat-input-bar">
                                 <button className="chat-attach-btn" onClick={() => fileRef.current?.click()} title="Share image" aria-label="Share image">📷</button>
                                 <button className="chat-attach-btn" onClick={() => docRef.current?.click()} title="Share file" aria-label="Share file">📎</button>
-                                <button className="chat-attach-btn" onClick={() => voiceRef.current?.click()} title="Voice note" aria-label="Send voice note">🎤</button>
                                 <button className="chat-attach-btn" onClick={() => setShowEmoji(!showEmoji)} title="Emoji" aria-label="Emoji picker">😊</button>
                                 <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleImagePick} />
                                 <input ref={docRef} type="file" style={{ display: "none" }} onChange={handleFilePick} />
-                                <input ref={voiceRef} type="file" accept="audio/*" style={{ display: "none" }} onChange={handleVoicePick} />
                                 <textarea
                                     className="chat-input"
                                     placeholder={`Message ${activeConv.user.firstName}…`}
@@ -758,6 +894,18 @@ const Chat = () => {
                     )}
                 </div>
             </div>
+
+            {/* Phone Number Popup */}
+            {showPhonePopup && (
+                <div className="phone-popup-overlay" onClick={() => setShowPhonePopup(false)}>
+                    <div className="phone-popup" onClick={e => e.stopPropagation()}>
+                        <div className="popup-icon">🚫</div>
+                        <h3>Phone Numbers Are Not Allowed</h3>
+                        <p>For the safety and privacy of our members, sharing phone numbers or other direct contact information is not allowed on DateClone. Please continue communicating within the platform.</p>
+                        <button onClick={() => setShowPhonePopup(false)}>OK</button>
+                    </div>
+                </div>
+            )}
 
             {/* Forward Modal */}
             {showForward && forwardMsg && (
@@ -798,12 +946,11 @@ const Chat = () => {
                             {galleryMedia.length === 0 ? (
                                 <p>No shared media yet.</p>
                             ) : (
-                                galleryMedia.map(m => (
+                                galleryMedia.map((m: any) => (
                                     <div key={m._id} className="chat-gallery-item">
                                         {m.image && <img src={m.image} alt="" loading="lazy" onClick={() => window.open(m.image, "_blank")} />}
                                         {m.gifUrl && <span style={{ fontSize: "2rem" }}>{m.gifUrl}</span>}
                                         {m.fileUrl && <a href={m.fileUrl} target="_blank" rel="noopener noreferrer">📎 {m.fileName}</a>}
-                                        {m.voiceNote && <audio controls src={m.voiceNote} />}
                                         <span className="chat-gallery-time">{fmtDate(m.createdAt)}</span>
                                     </div>
                                 ))

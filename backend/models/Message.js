@@ -16,7 +16,7 @@ const messageSchema = new mongoose.Schema(
         image: String,
         messageType: {
             type: String,
-            enum: ["text", "image", "gif", "voice"],
+            enum: ["text", "image", "gif"],
             default: "text",
         },
         isRead: { type: Boolean, default: false },
@@ -25,19 +25,19 @@ const messageSchema = new mongoose.Schema(
         deliveredAt: Date,
         isDeleted: { type: Boolean, default: false },
         deletedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-        reaction: String, // emoji reaction (single, for backward compat)
-        reactions: [{ userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, emoji: String }], // multiple reactions
+        editedAt: Date,
+        reaction: String,
+        reactions: [{ userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, emoji: String }],
         reactionCount: { type: Number, default: 0 },
         replyTo: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Message",
         },
-        replyContent: String, // cached content of replied message
-        replyFrom: String, // name of replied message sender
+        replyContent: String,
+        replyFrom: String,
         isFlagged: { type: Boolean, default: false },
         flagReasons: [String],
         flaggedAt: Date,
-        voiceNote: String,
         fileUrl: String,
         fileName: String,
         fileSize: Number,

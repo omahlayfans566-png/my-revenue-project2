@@ -379,6 +379,13 @@ export const messageAPI = {
         });
     },
 
+    editMessage: async (messageId: string, content: string) => {
+        return apiCall(`/messages/edit/${messageId}`, {
+            method: "POST",
+            body: JSON.stringify({ content }),
+        });
+    },
+
     reactToMessage: async (messageId: string, reaction: string) => {
         return apiCall(`/messages/react/${messageId}`, {
             method: "POST",

@@ -1,4 +1,4 @@
-/* ─────────────────────────────────────────────────────────────────────────────
+ /* ─────────────────────────────────────────────────────────────────────────────
    PWA Install Prompt Styles
    Professional, branded install experience for DateClone
    ───────────────────────────────────────────────────────────────────────────── */
@@ -8,7 +8,7 @@
   position: fixed;
   bottom: 88px;
   right: 20px;
-  z-index: 9999;
+  z-index: 9998;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -26,6 +26,9 @@
   white-space: nowrap;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  /* Prevent overlap with other UI elements */
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 .pwa-floating-install:hover {
@@ -62,10 +65,10 @@
   display: none;
 }
 
-/* Mobile adjustments */
-@media (max-width: 640px) {
+/* Mobile adjustments - avoid overlap with bottom nav */
+@media (max-width: 900px) {
   .pwa-floating-install {
-    bottom: 80px;
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
     right: 16px;
     padding: 10px 16px;
     font-size: 0.8125rem;
@@ -111,7 +114,7 @@
 /* Foldable / very small screens */
 @media (max-width: 360px) {
   .pwa-floating-install {
-    bottom: 72px;
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
     right: 12px;
     width: 44px;
     height: 44px;
@@ -120,6 +123,12 @@
     width: 20px;
     height: 20px;
   }
+}
+
+/* Ensure the button doesn't overlap with any toast notifications */
+.pwa-floating-install {
+  /* Move above toast containers */
+  z-index: 9998;
 }
 
 /* ── Popup Overlay ─────────────────────────────────────────────────────────── */

@@ -270,13 +270,17 @@ io.on("connection", (socket) => {
     });
 
     // ── send_message ──────────────────────────────────────────────────────────
-    socket.on("send_message", async ({ toUserId, content, image, tempId, messageType, voiceNote, fileUrl, fileName, fileSize, gifUrl, replyTo, isForwarded }) => {
+    socket.on("send_message", async ({ toUserId, content, image, tempId, messageType, fileUrl, fileName, fileSize, gifUrl, replyTo, isForwarded }) => {
         if (!socket.userId || !toUserId) return;
         try {
-            const { sendMessage } = await import("./services/chatService.js");
+            const { sendMessage, containsPhoneNumber } = await import("./services/chatService.js");
+            // Phone number block
+            if (content && containsPhoneNumber(content)) {
+                return socket.emit("message_error", { tempId, error: "Phone numbers are not allowed" });
+            }
             const result = await sendMessage({
                 fromUserId: socket.userId, toUserId, content, messageType, image,
-                voiceNote, fileUrl, fileName, fileSize, gifUrl, replyTo, isForwarded, tempId,
+                fileUrl, fileName, fileSize, gifUrl, replyTo, isForwarded, tempId,
             });
 
             if (result) {
