@@ -3,7 +3,7 @@ import { Route, Routes, Navigate } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import "./App.css";
 
-// Lazy load pages for code splitting
+// Lazy load all pages for code splitting
 const Home = lazy(() => import("./pages/Home"));
 const Login = lazy(() => import("./pages/Login"));
 const Register = lazy(() => import("./pages/Register"));
@@ -27,8 +27,16 @@ const ViewProfile = lazy(() => import("./pages/ViewProfile"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const PaymentCallback = lazy(() => import("./pages/PaymentCallback"));
 
+// Lazy load PWA components
+const PwaInstallPrompt = lazy(() => import("./component/PwaInstallPrompt"));
+const PwaUpdateNotifier = lazy(() => import("./component/PwaUpdateNotifier"));
+const OnlineStatusManager = lazy(() => import("./component/OnlineStatusManager"));
+const SkipToContent = lazy(() => import("./component/SkipToContent"));
+
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import { SocketProvider } from "./context/SocketContext";
+import { SocketProvider, useSocket } from "./context/SocketContext";
+import { useDocumentTitle } from "./hooks/useDocumentTitle";
+import { registerOfflineSync } from "./services/offlineQueue";
 
 // ─── Loading Fallback ──────────────────────────────────────────────────────────
 const PageLoader = () => (
@@ -105,7 +113,6 @@ const PublicOnlyRoute = ({ children }: { children: ReactNode }) => {
   return !isAuthenticated ? <>{children}</> : <Navigate to="/dashboard" replace />;
 };
 
-// AdminRoute: requires authentication + admin/moderator/super_admin role
 const AdminRoute = ({ children }: { children: ReactNode }) => {
   const { user, isAuthenticated, loading } = useAuth();
   if (loading) return <PageLoader />;
@@ -121,7 +128,6 @@ function AppRoutes() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
-        {/* Public routes */}
         <Route path="/" element={<Home />} />
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />
@@ -129,155 +135,33 @@ function AppRoutes() {
         <Route path="/terms" element={<Terms />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/premium" element={<Premium />} />
-
-        {/* Paystack payment callback — public, handles redirect from payment gateway */}
         <Route path="/payment/callback" element={<PaymentCallback />} />
-
-        {/* Public-only */}
-        <Route
-          path="/login"
-          element={
-            <PublicOnlyRoute>
-              <Login />
-            </PublicOnlyRoute>
-          }
-        />
-        <Route
-          path="/register"
-          element={
-            <PublicOnlyRoute>
-              <Register />
-            </PublicOnlyRoute>
-          }
-        />
-
-        {/* Protected */}
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/discover"
-          element={
-            <ProtectedRoute>
-              <Discover />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/matches"
-          element={
-            <ProtectedRoute>
-              <Matches />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/chat"
-          element={
-            <ProtectedRoute>
-              <Chat />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/chat/:userId"
-          element={
-            <ProtectedRoute>
-              <Chat />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/chat/archived"
-          element={
-            <ProtectedRoute>
-              <ArchivedChats />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/notifications"
-          element={
-            <ProtectedRoute>
-              <Notifications />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/profile"
-          element={
-            <ProtectedRoute>
-              <Profile />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/profile/edit"
-          element={
-            <ProtectedRoute>
-              <EditProfile />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/profile/:userId"
-          element={
-            <ProtectedRoute>
-              <ViewProfile />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/settings"
-          element={
-            <ProtectedRoute>
-              <Settings />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/wizard"
-          element={
-            <ProtectedRoute>
-              <ProfileWizard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin"
-          element={
-            <AdminRoute>
-              <AdminDashboard />
-            </AdminRoute>
-          }
-        />
-
+        <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
+        <Route path="/register" element={<PublicOnlyRoute><Register /></PublicOnlyRoute>} />
+        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/discover" element={<ProtectedRoute><Discover /></ProtectedRoute>} />
+        <Route path="/matches" element={<ProtectedRoute><Matches /></ProtectedRoute>} />
+        <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+        <Route path="/chat/:userId" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+        <Route path="/chat/archived" element={<ProtectedRoute><ArchivedChats /></ProtectedRoute>} />
+        <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+        <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+        <Route path="/profile/edit" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
+        <Route path="/profile/:userId" element={<ProtectedRoute><ViewProfile /></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+        <Route path="/wizard" element={<ProtectedRoute><ProfileWizard /></ProtectedRoute>} />
+        <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
   );
 }
 
-// ─── PWA Components ─────────────────────────────────────────────────────────
-import PwaInstallPrompt from "./component/PwaInstallPrompt";
-import PwaUpdateNotifier from "./component/PwaUpdateNotifier";
-import OnlineStatusManager from "./component/OnlineStatusManager";
-import SkipToContent from "./component/SkipToContent";
-import { useDocumentTitle } from "./hooks/useDocumentTitle";
-import { registerOfflineSync } from "./services/offlineQueue";
-import { useSocket } from "./context/SocketContext";
-
 // ─── App Inner ─────────────────────────────────────────────────────────────────
 function AppInner() {
   const { unreadMessageCount } = useSocket();
   useDocumentTitle(unreadMessageCount);
 
-  // Register offline sync on mount
   useEffect(() => {
     const cleanup = registerOfflineSync();
     return cleanup;

@@ -11,5 +11,8 @@
     "dev": "cd dateclone && npx vite --port 5174",
     "build": "cd dateclone && npx vite build",
     "preview": "cd dateclone && npx vite preview"
+  },
+  "dependencies": {
+    "compression": "^1.8.1"
   }
 }

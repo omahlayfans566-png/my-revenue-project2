@@ -1,5 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
+import type { PanInfo } from "framer-motion";
 import toast from "react-hot-toast";
 import AppNavbar from "../component/AppNavbar";
 import { discoveryAPI, matchAPI } from "../services/apiService";
@@ -58,122 +60,208 @@ const DEFAULT_FILTERS: FilterState = {
     religion: "",
 };
 
-// ─── Swipe Card Component ─────────────────────────────────────────────────────
-const SwipeCard = ({
-    profile, swipeDir, onLike, onSuperLike, onPass, actionLoading, navigate, isOnline,
+const SWIPE_THRESHOLD = 100;
+
+// ─── Profile Card ──────────────────────────────────────────────────────────────
+const ProfileCard = ({
+    profile,
+    isOnline,
+    onSwipeEnd,
+    onInfo,
+    onMore,
+    index: cardIndex,
 }: {
-    profile: Profile; swipeDir: string | null;
-    onLike: () => void; onSuperLike: () => void; onPass: () => void;
-    actionLoading: string | null; navigate: (p: string) => void; isOnline: boolean;
+    profile: Profile;
+    isOnline: boolean;
+    onSwipeEnd: (dir: "left" | "right" | "up") => void;
+    onInfo: () => void;
+    onMore: () => void;
+    index: number;
 }) => {
     const [photoIdx, setPhotoIdx] = useState(0);
     const photos = [profile.profilePicture, ...(profile.photos || [])].filter(Boolean) as string[];
     const initials = `${profile.firstName?.[0] ?? ""}${profile.lastName?.[0] ?? ""}`.toUpperCase();
 
+    const x = useMotionValue(0);
+    const rotate = useTransform(x, [-300, 0, 300], [-25, 0, 25]);
+    const opacity = useTransform(x, [-300, -100, 0, 100, 300], [0, 1, 1, 1, 0]);
+    const likeOpacity = useTransform(x, [0, 100], [0, 1]);
+    const nopeOpacity = useTransform(x, [-100, 0], [1, 0]);
+
+    const handleDragEnd = (_: any, info: PanInfo) => {
+        const offset = info.offset.x;
+        const velocity = info.velocity.x;
+        if (Math.abs(offset) > SWIPE_THRESHOLD || Math.abs(velocity) > 500) {
+            if (offset > 0) onSwipeEnd("right");
+            else onSwipeEnd("left");
+        }
+    };
+
+    const swipeOutVariants = {
+        exitRight: { x: 500, rotate: 25, opacity: 0, transition: { duration: 0.35 } },
+        exitLeft: { x: -500, rotate: -25, opacity: 0, transition: { duration: 0.35 } },
+        exitUp: { y: -500, scale: 0.8, opacity: 0, transition: { duration: 0.35 } },
+    };
+
     return (
-        <div className={`swipe-card ${swipeDir === "right" ? "swipe-right" : swipeDir === "left" ? "swipe-left" : swipeDir === "up" ? "swipe-up" : ""}`}>
-
-            {/* Photo area */}
-            <div className="swipe-photo" onClick={() => navigate(`/profile/${profile._id}`)}>
+        <motion.div
+            className="swipe-card-fm"
+            drag={cardIndex === 0 ? "x" : false}
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.9}
+            style={{ x, rotate, opacity }}
+            onDragEnd={handleDragEnd}
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{
+                x: 0,
+                y: 0,
+                rotate: 0,
+                opacity: 0,
+                scale: 0.85,
+                transition: { duration: 0.3 },
+            }}
+            layout
+            whileTap={{ cursor: "grabbing" }}
+        >
+            <div className="sc-photo-wrap" onClick={() => {
+                // Taps on left/right halves navigate photos
+            }}>
+                {/* Photo */}
                 {photos.length > 0 ? (
-                    <img src={photos[photoIdx]} alt={profile.firstName} loading="lazy" />
+                    <img src={photos[photoIdx]} alt={profile.firstName} className="sc-photo" loading="lazy" />
                 ) : (
-                    <div className="swipe-photo-placeholder">{initials}</div>
+                    <div className="sc-photo-placeholder">{initials}</div>
                 )}
 
-                {/* Photo navigation bars */}
+                {/* Photo tap zones */}
+                <div className="sc-photo-tap-left" onClick={(e) => { e.stopPropagation(); setPhotoIdx(i => Math.max(0, i - 1)); }} />
+                <div className="sc-photo-tap-right" onClick={(e) => { e.stopPropagation(); setPhotoIdx(i => Math.min(photos.length - 1, i + 1)); }} />
+
+                {/* Photo progress bars */}
                 {photos.length > 1 && (
-                    <>
-                        <div className="photo-dots">
-                            {photos.map((_, i) => (
-                                <span key={i} className={`photo-dot ${i === photoIdx ? "active" : ""}`}
-                                    onClick={e => { e.stopPropagation(); setPhotoIdx(i); }} />
-                            ))}
-                        </div>
-                        <div className="photo-prev" onClick={e => { e.stopPropagation(); setPhotoIdx(i => Math.max(0, i - 1)); }} />
-                        <div className="photo-next" onClick={e => { e.stopPropagation(); setPhotoIdx(i => Math.min(photos.length - 1, i + 1)); }} />
-                    </>
+                    <div className="sc-photo-progress">
+                        {photos.map((_, i) => (
+                            <span key={i} className={`sc-photo-bar ${i === photoIdx ? "active" : ""}`} />
+                        ))}
+                    </div>
                 )}
-
-                {/* Badges */}
-                <div className="swipe-badges">
-                    {profile.isVerified && <span className="badge-verified">✓ Verified</span>}
-                    {isOnline && <span className="badge-online">● Online</span>}
-                    {profile.compatibilityScore && profile.compatibilityScore > 0 && (
-                        <span className="badge-compat">{profile.compatibilityScore}% Match</span>
-                    )}
-                    {profile.isPremium && <span className="badge-premium">✨ Premium</span>}
-                    {profile.distance && <span className="badge-distance">{profile.distance} km</span>}
-                </div>
 
                 {/* Swipe stamps */}
-                {swipeDir === "right" && <div className="swipe-stamp stamp-like">LIKE</div>}
-                {swipeDir === "left" && <div className="swipe-stamp stamp-nope">NOPE</div>}
-                {swipeDir === "up" && <div className="swipe-stamp stamp-super">SUPER</div>}
+                <motion.div className="sc-stamp stamp-like" style={{ opacity: likeOpacity }}>
+                    LIKE
+                </motion.div>
+                <motion.div className="sc-stamp stamp-nope" style={{ opacity: nopeOpacity }}>
+                    NOPE
+                </motion.div>
 
-                {/* Info overlay */}
-                <div className="swipe-overlay">
-                    <div className="swipe-overlay-top">
-                        <div className="swipe-name-age">
-                            <h2>{profile.firstName}, {profile.age ?? "?"}</h2>
-                            {profile.isOnline && <span className="online-indicator-dot" />}
+                {/* Online badge top left */}
+                {isOnline && <span className="sc-online-badge">●</span>}
+
+                {/* More button top right */}
+                <button className="sc-more-btn" onClick={(e) => { e.stopPropagation(); onMore(); }} aria-label="More">
+                    ⋮
+                </button>
+
+                {/* Bottom info overlay */}
+                <div className="sc-overlay">
+                    <div className="sc-overlay-row">
+                        <div className="sc-overlay-left">
+                            <div className="sc-name-row">
+                                <h2 className="sc-name">{profile.firstName}, {profile.age ?? "?"}</h2>
+                                {profile.isVerified && (
+                                    <span className="sc-verified-badge" title="Verified">✓</span>
+                                )}
+                            </div>
+                            {profile.occupation && <p className="sc-occupation">{profile.occupation}</p>}
+                            <p className="sc-location">
+                                📍 {[profile.city, profile.country].filter(Boolean).join(", ")}
+                                {profile.distance && <span className="sc-distance"> · {profile.distance} km</span>}
+                            </p>
+                        </div>
+                        <button className="sc-info-btn" onClick={(e) => { e.stopPropagation(); onInfo(); }} aria-label="Info">
+                            ⓘ
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </motion.div>
+    );
+};
+
+// ─── Stacked Card Deck ─────────────────────────────────────────────────────────
+const SwipeStack = ({
+    profiles,
+    currentIndex,
+    onlineUsersSet,
+    onSwipeEnd,
+    onInfo,
+    onMore,
+}: {
+    profiles: Profile[];
+    currentIndex: number;
+    onlineUsersSet: Set<string>;
+    onSwipeEnd: (dir: "left" | "right" | "up") => void;
+    onInfo: (p: Profile) => void;
+    onMore: (p: Profile) => void;
+}) => {
+    // Show up to 3 cards stacked
+    const visibleProfiles = [];
+    for (let i = 0; i < 3; i++) {
+        const idx = currentIndex + i;
+        if (idx < profiles.length) {
+            visibleProfiles.push({ profile: profiles[idx], stackIndex: i });
+        }
+    }
+
+    if (visibleProfiles.length === 0) return null;
+
+    return (
+        <div className="swipe-stack-container">
+            {visibleProfiles.map(({ profile, stackIndex }) => {
+                // Determine the card type: center, left-behind, right-behind
+                let cardClass = "sc-stack-card sc-stack-center";
+                if (stackIndex === 1) cardClass = "sc-stack-card sc-stack-right";
+                else if (stackIndex === 2) cardClass = "sc-stack-card sc-stack-left";
+
+                if (stackIndex === 0) {
+                    // Active draggable card
+                    return (
+                        <AnimatePresence mode="popLayout" key={profile._id}>
+                            <ProfileCard
+                                profile={profile}
+                                isOnline={onlineUsersSet.has(profile._id) || profile.isOnline || false}
+                                onSwipeEnd={onSwipeEnd}
+                                onInfo={() => onInfo(profile)}
+                                onMore={() => onMore(profile)}
+                                index={0}
+                            />
+                        </AnimatePresence>
+                    );
+                }
+
+                // Stacked background cards - static
+                const isRight = stackIndex === 1;
+                return (
+                    <div
+                        key={profile._id}
+                        className={`sc-stack-card ${isRight ? "sc-stack-right" : "sc-stack-left"}`}
+                    >
+                        <div className="sc-stack-photo-wrap">
+                            {profile.profilePicture ? (
+                                <img src={profile.profilePicture} alt="" className="sc-stack-photo" loading="lazy" />
+                            ) : (
+                                <div className="sc-photo-placeholder">
+                                    {`${profile.firstName?.[0] ?? ""}${profile.lastName?.[0] ?? ""}`.toUpperCase()}
+                                </div>
+                            )}
+                            <div className="sc-stack-overlay">
+                                <span className="sc-stack-name">{profile.firstName}, {profile.age ?? "?"}</span>
+                            </div>
                         </div>
                     </div>
-                    {(profile.city || profile.country) && (
-                        <p className="swipe-location">
-                            📍 {[profile.city, profile.country].filter(Boolean).join(", ")}
-                            {profile.distance && <span className="swipe-distance"> · {profile.distance} km</span>}
-                        </p>
-                    )}
-                    {profile.occupation && <p className="swipe-occupation">💼 {profile.occupation}</p>}
-                </div>
-            </div>
-
-            {/* Bio */}
-            {profile.aboutMe && (
-                <div className="swipe-bio">
-                    <p>"{profile.aboutMe.slice(0, 200)}{profile.aboutMe.length > 200 ? "…" : ""}"</p>
-                </div>
-            )}
-
-            {/* Interests */}
-            {profile.interests && profile.interests.length > 0 && (
-                <div className="swipe-interests">
-                    {profile.interests.slice(0, 8).map(i => (
-                        <span key={i} className="swipe-tag">{i}</span>
-                    ))}
-                </div>
-            )}
-
-            {/* Details row */}
-            <div className="swipe-details-row">
-                {profile.education && <span>🎓 {profile.education.replace("_", " ")}</span>}
-                {profile.religion && <span>🙏 {profile.religion}</span>}
-                {profile.relationshipGoal && <span>💞 {profile.relationshipGoal.replace("_", " ")}</span>}
-            </div>
-
-            {/* View full profile */}
-            <button className="swipe-view-btn" onClick={() => navigate(`/profile/${profile._id}`)}>
-                View Full Profile →
-            </button>
-
-            {/* Action buttons */}
-            <div className="swipe-actions">
-                <button className="action-btn action-pass"
-                    onClick={onPass} disabled={!!actionLoading} aria-label="Pass" title="Pass">
-                    <span>✕</span>
-                </button>
-                <button className="action-btn action-superlike"
-                    onClick={onSuperLike} disabled={!!actionLoading} aria-label="Super Like" title="Super Like">
-                    <span>⭐</span>
-                </button>
-                <button className="action-btn action-like"
-                    onClick={onLike} disabled={!!actionLoading} aria-label="Like" title="Like">
-                    <span>❤️</span>
-                </button>
-            </div>
-
-            <p className="swipe-hint">← Pass &nbsp;|&nbsp; ⭐ Super Like &nbsp;|&nbsp; ❤️ Like →</p>
+                );
+            })}
         </div>
     );
 };
@@ -184,11 +272,18 @@ const MatchModal = ({ profile, onClose, onMessage }: {
 }) => {
     const initials = `${profile.firstName?.[0] ?? ""}${profile.lastName?.[0] ?? ""}`.toUpperCase();
     return (
-        <div className="match-modal-overlay" onClick={onClose}>
-            <div className="match-modal" onClick={e => e.stopPropagation()}>
+        <motion.div className="match-modal-overlay" onClick={onClose}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div className="match-modal" onClick={e => e.stopPropagation()}
+                initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", damping: 20 }}>
                 <div className="match-confetti">
                     {["🎉", "💕", "✨", "💖", "🌟"].map((e, i) => (
-                        <span key={i} className="confetti-piece" style={{ animationDelay: `${i * 0.1}s` }}>{e}</span>
+                        <motion.span key={i} className="confetti-piece"
+                            initial={{ y: -20, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: i * 0.1, type: "spring" }}>
+                            {e}
+                        </motion.span>
                     ))}
                 </div>
                 <div className="match-modal-avatars">
@@ -202,8 +297,8 @@ const MatchModal = ({ profile, onClose, onMessage }: {
                     <button className="btn btn-primary" onClick={onMessage}>💬 Send Message</button>
                     <button className="btn btn-outline" onClick={onClose}>Keep Swiping</button>
                 </div>
-            </div>
-        </div>
+            </motion.div>
+        </motion.div>
     );
 };
 
@@ -244,7 +339,6 @@ const FilterPanel = ({
                 </div>
 
                 <div className="filter-body">
-                    {/* Distance */}
                     <div className="filter-group">
                         <label>Distance</label>
                         <select value={filters.distance} onChange={e => update("distance", e.target.value)}>
@@ -255,7 +349,6 @@ const FilterPanel = ({
                         </select>
                     </div>
 
-                    {/* Age Range */}
                     <div className="filter-group">
                         <label>Age Range</label>
                         <div className="filter-range">
@@ -267,7 +360,6 @@ const FilterPanel = ({
                         </div>
                     </div>
 
-                    {/* Gender */}
                     <div className="filter-group">
                         <label>Gender</label>
                         <select value={filters.gender} onChange={e => update("gender", e.target.value)}>
@@ -278,7 +370,6 @@ const FilterPanel = ({
                         </select>
                     </div>
 
-                    {/* Looking For */}
                     <div className="filter-group">
                         <label>Looking For</label>
                         <select value={filters.lookingFor} onChange={e => update("lookingFor", e.target.value)}>
@@ -289,7 +380,6 @@ const FilterPanel = ({
                         </select>
                     </div>
 
-                    {/* Status filters */}
                     <div className="filter-group">
                         <label>Status</label>
                         <div className="filter-checkboxes">
@@ -311,7 +401,6 @@ const FilterPanel = ({
                         </div>
                     </div>
 
-                    {/* Relationship Goal */}
                     <div className="filter-group">
                         <label>Relationship Goal</label>
                         <select value={filters.relationshipGoal} onChange={e => update("relationshipGoal", e.target.value)}>
@@ -322,7 +411,6 @@ const FilterPanel = ({
                         </select>
                     </div>
 
-                    {/* Religion */}
                     <div className="filter-group">
                         <label>Religion</label>
                         <select value={filters.religion} onChange={e => update("religion", e.target.value)}>
@@ -333,7 +421,6 @@ const FilterPanel = ({
                         </select>
                     </div>
 
-                    {/* Interests */}
                     {availableFilters?.interests && availableFilters.interests.length > 0 && (
                         <div className="filter-group">
                             <label>Interests</label>
@@ -366,7 +453,7 @@ const Discover = () => {
     const [loading, setLoading] = useState(true);
     const [actionLoading, setAL] = useState<string | null>(null);
     const [matchModal, setMatchModal] = useState<Profile | null>(null);
-    const [swipeDir, setSwipeDir] = useState<string | null>(null);
+    const [swiping, setSwiping] = useState(false);
     const [index, setIndex] = useState(0);
     const [showFilters, setShowFilters] = useState(false);
     const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
@@ -375,7 +462,7 @@ const Discover = () => {
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
-    const touchStart = useRef<{ x: number; y: number } | null>(null);
+    const [history, setHistory] = useState<Profile[]>([]);
 
     // Active filter count
     const activeFilterCount = Object.entries(activeFilters).filter(([k, v]) => {
@@ -407,6 +494,7 @@ const Discover = () => {
             } else {
                 setProfiles(users);
                 setIndex(0);
+                setHistory([]);
             }
             setHasMore(users.length >= 20 && res.pagination?.page < res.pagination?.pages);
         } catch {
@@ -430,8 +518,9 @@ const Discover = () => {
     const current = profiles[index];
 
     const doAction = async (dir: "right" | "left" | "up", action: () => Promise<any>) => {
-        if (!current || actionLoading) return;
-        setAL(dir); setSwipeDir(dir);
+        if (!current || actionLoading || swiping) return;
+        setAL(dir);
+        setSwiping(true);
         let errorMsg: string | null = null;
         try {
             const res = await action();
@@ -443,26 +532,21 @@ const Discover = () => {
                 });
             }
         } catch (err: any) {
-            // Capture the error message from the server
             errorMsg = err?.message || "Something went wrong";
-            // 429 = daily like limit reached — surface it clearly
-            // Other errors are also surfaced so users know what happened
-            console.error("[Like/Pass/SuperLike error]", err);
+            console.error("[Swipe error]", err);
         }
         setTimeout(() => {
-            setSwipeDir(null); setAL(null);
-            // Only advance the card if the action succeeded (no error)
+            setAL(null);
+            setSwiping(false);
             if (!errorMsg) {
+                setHistory(prev => [current, ...prev]);
                 setIndex(i => i + 1);
-                // Load more when reaching end
                 if (index >= profiles.length - 3 && hasMore && !loadingMore) {
                     const nextPage = page + 1;
                     setPage(nextPage);
                     loadProfiles(nextPage, true);
                 }
             } else {
-                // Show the actual server error as a toast
-                // Rate limit gets a special message
                 if (errorMsg!.toLowerCase().includes("limit") || errorMsg!.toLowerCase().includes("429")) {
                     toast("❤️ Daily like limit reached. Upgrade to Premium for unlimited likes!", {
                         duration: 5000,
@@ -472,37 +556,34 @@ const Discover = () => {
                     toast.error(errorMsg!);
                 }
             }
-        }, 450);
+        }, 400);
     };
 
-    // Touch swipe
-    const onTouchStart = (e: React.TouchEvent) => {
-        touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    const handleSwipeEnd = (dir: "left" | "right" | "up") => {
+        if (dir === "right") doAction("right", () => matchAPI.likeUser(current!._id));
+        else if (dir === "left") doAction("left", () => matchAPI.passUser(current!._id));
+        else if (dir === "up") doAction("up", () => matchAPI.superLikeUser(current!._id));
     };
-    const onTouchEnd = (e: React.TouchEvent) => {
-        if (!touchStart.current) return;
-        const dx = e.changedTouches[0].clientX - touchStart.current.x;
-        const dy = e.changedTouches[0].clientY - touchStart.current.y;
-        touchStart.current = null;
-        if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
-            if (dx > 0) doAction("right", () => matchAPI.likeUser(current!._id));
-            else doAction("left", () => matchAPI.passUser(current!._id));
-        } else if (dy < -80) {
-            doAction("up", () => matchAPI.superLikeUser(current!._id));
-        }
+
+    const handleUndo = () => {
+        if (history.length === 0) return;
+        const last = history[0];
+        setHistory(prev => prev.slice(1));
+        setProfiles(prev => [last, ...prev]);
+        setIndex(i => Math.max(0, i - 1));
     };
 
     // Keyboard support
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
-            if (!current || actionLoading) return;
-            if (e.key === "ArrowRight") doAction("right", () => matchAPI.likeUser(current!._id));
-            if (e.key === "ArrowLeft") doAction("left", () => matchAPI.passUser(current!._id));
-            if (e.key === "ArrowUp") doAction("up", () => matchAPI.superLikeUser(current!._id));
+            if (!current || actionLoading || swiping) return;
+            if (e.key === "ArrowRight") handleSwipeEnd("right");
+            if (e.key === "ArrowLeft") handleSwipeEnd("left");
+            if (e.key === "ArrowUp") handleSwipeEnd("up");
         };
         window.addEventListener("keydown", handler);
         return () => window.removeEventListener("keydown", handler);
-    }, [current, actionLoading]);
+    }, [current, actionLoading, swiping]);
 
     return (
         <div className="page-wrapper">
@@ -573,10 +654,7 @@ const Discover = () => {
                 )}
 
                 {/* Main card area */}
-                <div className="discover-main"
-                    onTouchStart={onTouchStart}
-                    onTouchEnd={onTouchEnd}>
-
+                <div className="discover-main">
                     {loading ? (
                         <div className="discover-loading">
                             <div className="discover-spinner" />
@@ -610,30 +688,38 @@ const Discover = () => {
                         </div>
                     ) : (
                         <>
-                            <SwipeCard
-                                profile={current}
-                                swipeDir={swipeDir}
-                                isOnline={onlineUsers.has(current._id) || current.isOnline || false}
-                                onLike={() => doAction("right", () => matchAPI.likeUser(current._id))}
-                                onSuperLike={() => doAction("up", () => matchAPI.superLikeUser(current._id))}
-                                onPass={() => doAction("left", () => matchAPI.passUser(current._id))}
-                                actionLoading={actionLoading}
-                                navigate={navigate}
+                            <SwipeStack
+                                profiles={profiles}
+                                currentIndex={index}
+                                onlineUsersSet={onlineUsers}
+                                onSwipeEnd={handleSwipeEnd}
+                                onInfo={(p) => navigate(`/profile/${p._id}`)}
+                                onMore={(p) => navigate(`/profile/${p._id}`)}
                             />
 
-                            {/* Progress dots */}
-                            <div className="swipe-progress">
-                                {profiles.slice(0, Math.min(profiles.length, 10)).map((_, i) => (
-                                    <span key={i} className={`progress-dot ${i === index ? "active" : i < index ? "done" : ""}`} />
-                                ))}
-                                {profiles.length > 10 && <span className="progress-more">+{profiles.length - 10}</span>}
+                            {/* Action buttons */}
+                            <div className="swipe-actions-bar">
+                                <button className="sa-btn sa-undo" onClick={handleUndo} disabled={history.length === 0} title="Undo" aria-label="Undo">
+                                    ↺
+                                </button>
+                                <button className="sa-btn sa-pass" onClick={() => handleSwipeEnd("left")} disabled={!!actionLoading || swiping} title="Pass" aria-label="Pass">
+                                    ✕
+                                </button>
+                                <button className="sa-btn sa-like" onClick={() => handleSwipeEnd("right")} disabled={!!actionLoading || swiping} title="Like" aria-label="Like">
+                                    ❤
+                                </button>
+                                <button className="sa-btn sa-super" onClick={() => handleSwipeEnd("up")} disabled={!!actionLoading || swiping} title="Super Like" aria-label="Super Like">
+                                    ⭐
+                                </button>
+                                <button className="sa-btn sa-boost" title="Boost" aria-label="Boost">
+                                    ⚡
+                                </button>
                             </div>
 
                             {/* Load more indicator */}
                             {loadingMore && (
                                 <div className="discover-loading-more">
-                                    <div className="discover-spinner" style={{ width: 24, height: 24 }} />
-                                    <p>Loading more…</p>
+                                    <div className="discover-spinner" style={{ width: 20, height: 20 }} />
                                 </div>
                             )}
                         </>

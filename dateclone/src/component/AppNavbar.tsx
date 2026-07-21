@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { notificationAPI } from "../services/apiService";
@@ -6,10 +6,9 @@ import { useSocket } from "../context/SocketContext";
 import PremiumBadge from "./PremiumBadge";
 import "../style/appNavbar.css";
 
-const AppNavbar = ({ unreadMessages: propUnreadMessages }: { unreadMessages?: number }) => {
+const AppNavbar = memo(({ unreadMessages: propUnreadMessages }: { unreadMessages?: number }) => {
     const { user, logout } = useAuth();
     const { socket, unreadMessageCount: socketUnreadCount } = useSocket();
-    // Use socket unread count if available, otherwise fall back to prop
     const unreadMessages = socketUnreadCount > 0 ? socketUnreadCount : (propUnreadMessages || 0);
     const location = useLocation();
     const navigate = useNavigate();
@@ -17,20 +16,21 @@ const AppNavbar = ({ unreadMessages: propUnreadMessages }: { unreadMessages?: nu
     const [profileOpen, setProfileOpen] = useState(false);
     const [unreadNotifications, setUnreadNotifications] = useState(0);
 
-    const isActive = (path: string) => location.pathname.startsWith(path);
+    const isActive = useCallback((path: string) => location.pathname.startsWith(path), [location.pathname]);
 
-    const handleLogout = () => {
+    const handleLogout = useCallback(() => {
         logout();
         navigate("/");
-    };
+    }, [logout, navigate]);
 
-    // Load unread notification count
+    // Load unread notification count only once on mount (socket handles updates)
     useEffect(() => {
         if (!user) return;
         notificationAPI.getUnreadCount()
             .then(res => setUnreadNotifications(res.count || 0))
             .catch(() => { });
-    }, [user]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // Listen for real-time notification count updates
     useEffect(() => {
@@ -47,52 +47,34 @@ const AppNavbar = ({ unreadMessages: propUnreadMessages }: { unreadMessages?: nu
     return (
         <nav className="app-navbar">
             <div className="app-navbar-inner">
-                {/* Logo */}
                 <Link to="/dashboard" className="app-nav-logo">
                     DateClone <span>💕</span>
                 </Link>
 
-                {/* Desktop nav links */}
                 {(user?.isAdmin || (user as any)?.role === "admin" || (user as any)?.role === "super_admin" || (user as any)?.role === "moderator") && (
                     <Link to="/admin" className="admin-nav-link">
                         🛡️ Admin
                     </Link>
                 )}
                 <ul className="app-nav-links">
-                    <li>
-                        <Link to="/dashboard" className={isActive("/dashboard") ? "active" : ""}>
-                            <span className="nav-icon">🏠</span> Home
-                        </Link>
-                    </li>
-                    <li>
-                        <Link to="/discover" className={isActive("/discover") ? "active" : ""}>
-                            <span className="nav-icon">🔥</span> Discover
-                        </Link>
-                    </li>
-                    <li>
-                        <Link to="/matches" className={isActive("/matches") ? "active" : ""}>
-                            <span className="nav-icon">💞</span> Matches
-                        </Link>
-                    </li>
-                    <li>
-                        <Link to="/chat" className={isActive("/chat") ? "active" : ""}>
-                            <span className="nav-icon">💬</span> Messages
-                            {unreadMessages > 0 && (
-                                <span className="nav-badge">{unreadMessages > 99 ? "99+" : unreadMessages}</span>
-                            )}
-                        </Link>
-                    </li>
-                    <li>
-                        <Link to="/notifications" className={isActive("/notifications") ? "active" : ""}>
-                            <span className="nav-icon">🔔</span> Notifications
-                            {unreadNotifications > 0 && (
-                                <span className="nav-badge">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>
-                            )}
-                        </Link>
-                    </li>
+                    {[
+                        { to: "/dashboard", icon: "🏠", label: "Home" },
+                        { to: "/discover", icon: "🔥", label: "Discover" },
+                        { to: "/matches", icon: "💞", label: "Matches" },
+                        { to: "/chat", icon: "💬", label: "Messages", badge: unreadMessages },
+                        { to: "/notifications", icon: "🔔", label: "Notifications", badge: unreadNotifications },
+                    ].map(({ to, icon, label, badge }) => (
+                        <li key={to}>
+                            <Link to={to} className={isActive(to) ? "active" : ""}>
+                                <span className="nav-icon">{icon}</span> {label}
+                                {(badge ?? 0) > 0 && (
+                                    <span className="nav-badge">{badge! > 99 ? "99+" : badge}</span>
+                                )}
+                            </Link>
+                        </li>
+                    ))}
                 </ul>
 
-                {/* Right side */}
                 <div className="app-nav-right">
                     {user && user.isPremium ? (
                         <div className="app-nav-premium-badge">
@@ -104,7 +86,6 @@ const AppNavbar = ({ unreadMessages: propUnreadMessages }: { unreadMessages?: nu
                         </Link>
                     )}
 
-                    {/* Profile dropdown */}
                     <div className="app-nav-profile" onClick={() => setProfileOpen(!profileOpen)}>
                         {user?.profilePicture ? (
                             <img src={user.profilePicture} alt="Profile" className="avatar avatar-sm nav-avatar" />
@@ -121,14 +102,11 @@ const AppNavbar = ({ unreadMessages: propUnreadMessages }: { unreadMessages?: nu
                                 <Link to="/settings" onClick={() => setProfileOpen(false)}>⚙️ Settings</Link>
                                 <Link to="/premium" onClick={() => setProfileOpen(false)}>✨ Premium</Link>
                                 <div className="dropdown-divider" />
-                                <button onClick={handleLogout} className="dropdown-logout">
-                                    🚪 Log Out
-                                </button>
+                                <button onClick={handleLogout} className="dropdown-logout">🚪 Log Out</button>
                             </div>
                         )}
                     </div>
 
-                    {/* Mobile hamburger */}
                     <button
                         className={`app-hamburger ${menuOpen ? "open" : ""}`}
                         onClick={() => setMenuOpen(!menuOpen)}
@@ -139,7 +117,6 @@ const AppNavbar = ({ unreadMessages: propUnreadMessages }: { unreadMessages?: nu
                 </div>
             </div>
 
-            {/* Mobile menu */}
             {menuOpen && (
                 <div className="app-mobile-menu">
                     {(user?.isAdmin || (user as any)?.role === "admin" || (user as any)?.role === "super_admin" || (user as any)?.role === "moderator") && (
@@ -150,15 +127,11 @@ const AppNavbar = ({ unreadMessages: propUnreadMessages }: { unreadMessages?: nu
                     <Link to="/matches" onClick={() => setMenuOpen(false)}>💞 Matches</Link>
                     <Link to="/chat" onClick={() => setMenuOpen(false)}>
                         💬 Messages
-                        {unreadMessages > 0 && (
-                            <span className="nav-badge-mobile">{unreadMessages}</span>
-                        )}
+                        {unreadMessages > 0 && <span className="nav-badge-mobile">{unreadMessages}</span>}
                     </Link>
                     <Link to="/notifications" onClick={() => setMenuOpen(false)}>
                         🔔 Notifications
-                        {unreadNotifications > 0 && (
-                            <span className="nav-badge-mobile">{unreadNotifications}</span>
-                        )}
+                        {unreadNotifications > 0 && <span className="nav-badge-mobile">{unreadNotifications}</span>}
                     </Link>
                     <Link to="/profile" onClick={() => setMenuOpen(false)}>👤 My Profile</Link>
                     <Link to="/profile/edit" onClick={() => setMenuOpen(false)}>✏️ Edit Profile</Link>
@@ -168,29 +141,24 @@ const AppNavbar = ({ unreadMessages: propUnreadMessages }: { unreadMessages?: nu
                 </div>
             )}
 
-            {/* Bottom mobile nav (always visible on mobile when authenticated) */}
             <div className="app-bottom-nav">
-                <Link to="/dashboard" className={isActive("/dashboard") ? "active" : ""}>
-                    <span>🏠</span><span>Home</span>
-                </Link>
-                <Link to="/discover" className={isActive("/discover") ? "active" : ""}>
-                    <span>🔥</span><span>Discover</span>
-                </Link>
-                <Link to="/matches" className={isActive("/matches") ? "active" : ""}>
-                    <span>💞</span><span>Matches</span>
-                </Link>
-                <Link to="/chat" className={isActive("/chat") ? "active" : ""}>
-                    <span>💬</span><span>Chat</span>
-                    {unreadMessages > 0 && (
-                        <span className="bottom-nav-badge">{unreadMessages > 9 ? "9+" : unreadMessages}</span>
-                    )}
-                </Link>
-                <Link to="/profile" className={isActive("/profile") ? "active" : ""}>
-                    <span>👤</span><span>Profile</span>
-                </Link>
+                {[
+                    { to: "/dashboard", icon: "🏠", label: "Home" },
+                    { to: "/discover", icon: "🔥", label: "Discover" },
+                    { to: "/matches", icon: "💞", label: "Matches" },
+                    { to: "/chat", icon: "💬", label: "Chat", badge: unreadMessages },
+                    { to: "/profile", icon: "👤", label: "Profile" },
+                ].map(({ to, icon, label, badge }) => (
+                    <Link key={to} to={to} className={isActive(to) ? "active" : ""}>
+                        <span>{icon}</span><span>{label}</span>
+                        {(badge ?? 0) > 0 && (
+                            <span className="bottom-nav-badge">{badge! > 9 ? "9+" : badge}</span>
+                        )}
+                    </Link>
+                ))}
             </div>
         </nav>
     );
-};
+});
 
 export default AppNavbar;

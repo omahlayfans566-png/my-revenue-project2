@@ -1,86 +1,30 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/pwa-icons/icon-192.png" />
-    <link rel="icon" type="image/png" sizes="192x192" href="/pwa-icons/icon-192.png" />
-    <link rel="icon" type="image/png" sizes="512x512" href="/pwa-icons/icon-512.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/pwa-icons/icon-192.png" />
-    <link rel="mask-icon" href="/pwa-icons/maskable-icon.svg" color="#FF4081" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#FF4081" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="DateClone" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="application-name" content="DateClone" />
-    <meta name="description" content="Find your perfect match on DateClone - The premium dating experience across Africa. Meet genuine singles, build meaningful relationships." />
-    <meta name="keywords" content="dating, date, match, relationship, love, premium dating, Africa dating" />
-    <meta name="author" content="DateClone" />
-    <meta name="robots" content="index, follow" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <link rel="manifest" href="/manifest.json" />
-    <meta name="msapplication-TileColor" content="#FF4081" />
-    <meta name="msapplication-TileImage" content="/pwa-icons/icon-192.png" />
-    <meta name="msapplication-config" content="none" />
-    <title>DateClone - Find Your Perfect Match</title>
-    <!-- Preload critical assets -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <meta name="description" content="Find your perfect match on DateClone - The premium dating experience" />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="apple-touch-icon" href="/pwa-icons/icon-192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Preconnect to critical origins -->
+    <link rel="preconnect" href="https://my-revenue-project2.onrender.com" />
+    <link rel="preconnect" href="https://my-revenue-project2.onrender.com" crossorigin />
     <link rel="dns-prefetch" href="https://my-revenue-project2.onrender.com" />
-    <link rel="preload" href="/pwa-icons/icon-192.png" as="image" type="image/png" />
-    <link rel="preload" href="/offline.html" as="document" />
-    <!-- SEO -->
-    <meta property="og:title" content="DateClone - Find Your Perfect Match" />
-    <meta property="og:description" content="The premium dating experience across Africa. Meet genuine singles and build meaningful relationships on DateClone." />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://my-revenue-project2.onrender.com" />
-    <meta property="og:image" content="/pwa-icons/icon-512.png" />
-    <meta property="og:image:width" content="512" />
-    <meta property="og:image:height" content="512" />
-    <meta property="og:locale" content="en_US" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="DateClone - Find Your Perfect Match" />
-    <meta name="twitter:description" content="The premium dating experience across Africa." />
-    <meta name="twitter:image" content="/pwa-icons/icon-512.png" />
-    <!-- Structured Data -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebApplication",
-      "name": "DateClone",
-      "url": "https://my-revenue-project2.onrender.com",
-      "description": "Find your perfect match on DateClone - The premium dating experience across Africa.",
-      "applicationCategory": "SocialNetworking",
-      "operatingSystem": "All",
-      "browserRequirements": "Requires JavaScript"
-    }
-    </script>
-    <!-- Service Worker is registered automatically by vite-plugin-pwa -->
-    <script>
-      // CRITICAL: Save the beforeinstallprompt event globally so React can access it
-      // The event fires once before React loads, so we must capture it here.
-      window.__deferredPrompt = null;
-      window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        window.__deferredPrompt = e;
-        // Dispatch a custom event so React components can react immediately
-        window.dispatchEvent(new CustomEvent('pwa-install-ready', { detail: e }));
-      });
-    </script>
+
+    <!-- Preload critical assets -->
+    <link rel="preload" href="/vite.svg" as="image" />
+
+    <title>DateClone</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/Main.tsx"></script>
-    <!-- Noscript fallback -->
-    <noscript>
-      <div style="text-align:center;padding:48px;font-family:sans-serif;background:#fff5f7;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center">
-        <div style="width:80px;height:80px;background:linear-gradient(135deg,#ff1744,#ff4081);border-radius:20px;display:flex;align-items:center;justify-content:center;margin-bottom:24px;box-shadow:0 8px 24px rgba(255,64,129,0.3)">
-          <span style="color:white;font-size:40px;font-weight:800;font-family:Georgia,serif">D</span>
-        </div>
-        <h1 style="font-size:1.5rem;color:#1a1a2e;margin-bottom:8px;font-weight:700">DateClone</h1>
-        <p style="color:#6b6b80;font-size:0.95rem;max-width:320px;line-height:1.6">Please enable JavaScript to use DateClone.</p>
-      </div>
-    </noscript>
   </body>
 </html>

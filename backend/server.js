@@ -6,10 +6,11 @@ import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import helmet from "helmet";
+import compression from "compression";
 import rateLimit from "express-rate-limit";
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
-import { connectDB, isMongoConnected } from "./config/database.js";
+import { connectDB, isMongoConnected, ensureIndexes } from "./config/database.js";
 import authRoutes from "./routes/authRoutes.js";
 import profileRoutes from "./routes/profileRoutes.js";
 import matchRoutes from "./routes/matchRoutes.js";
@@ -127,43 +128,6 @@ const updateLastSeen = async (userId) => {
     } catch { /* silent */ }
 };
 
-// ── Emit suggestion-related events ────────────────────────────────────────────
-export const emitUserRegistered = (userId) => {
-    io.emit("user_registered", { userId, timestamp: new Date().toISOString() });
-};
-
-export const emitProfileCompleted = (userId) => {
-    io.emit("profile_completed", { userId, timestamp: new Date().toISOString() });
-};
-
-export const emitProfileUpdated = (userId) => {
-    io.emit("profile_updated", { userId, timestamp: new Date().toISOString() });
-};
-
-export const emitProfilePhotoUploaded = (userId) => {
-    io.emit("profile_photo_uploaded", { userId, timestamp: new Date().toISOString() });
-};
-
-export const emitUserDeleted = (userId) => {
-    io.emit("user_deleted", { userId, timestamp: new Date().toISOString() });
-    io.emit("suggestions_updated", { timestamp: new Date().toISOString(), type: "user_deleted" });
-};
-
-export const emitUserBanned = (userId) => {
-    io.emit("user_banned", { userId, timestamp: new Date().toISOString() });
-    io.emit("suggestions_updated", { timestamp: new Date().toISOString(), type: "user_banned" });
-};
-
-export const emitUserUnbanned = (userId) => {
-    io.emit("user_unbanned", { userId, timestamp: new Date().toISOString() });
-    io.emit("suggestions_updated", { timestamp: new Date().toISOString(), type: "user_unbanned" });
-};
-
-export const emitUserActivated = (userId) => {
-    io.emit("user_activated", { userId, timestamp: new Date().toISOString() });
-    io.emit("suggestions_updated", { timestamp: new Date().toISOString(), type: "user_activated" });
-};
-
 // ── Socket connection handler ──────────────────────────────────────────────────
 io.on("connection", (socket) => {
     const userId = socket.userId;
@@ -274,7 +238,6 @@ io.on("connection", (socket) => {
         if (!socket.userId || !toUserId) return;
         try {
             const { sendMessage, containsPhoneNumber } = await import("./services/chatService.js");
-            // Phone number block
             if (content && containsPhoneNumber(content)) {
                 return socket.emit("message_error", { tempId, error: "Phone numbers are not allowed" });
             }
@@ -372,9 +335,20 @@ io.on("connection", (socket) => {
     });
 });
 
-// ── CORS & Security middleware ───────────────────────────────────────────────
+// ── Middleware: CORS, Security, Compression ───────────────────────────────────
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
+
+// Compression - must come before routes for response compression
+app.use(compression({
+    level: 6,
+    threshold: 1024, // compress responses > 1KB
+    filter: (req, res) => {
+        if (req.headers['x-no-compression']) return false;
+        return compression.filter(req, res);
+    },
+}));
+
 app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
     contentSecurityPolicy: false,
@@ -440,6 +414,12 @@ app.use(errorHandler);
 // ── Start ─────────────────────────────────────────────────────────────────────
 const start = async () => {
     await connectDB();
+    
+    // Ensure MongoDB indexes for query performance
+    if (isMongoConnected()) {
+        await ensureIndexes();
+    }
+    
     verifyEmailService().catch(() => { });
 
     server.on("error", (err) => {
@@ -457,7 +437,6 @@ const start = async () => {
     setInterval(async () => {
         try {
             const { Subscription } = await import("./models/Subscription.js");
-            const { User } = await import("./models/User.js");
             const now = new Date();
 
             const expiredSubs = await Subscription.find({ status: "active", endDate: { $lte: now } });
@@ -492,7 +471,8 @@ const start = async () => {
     server.listen(PORT, () => {
         const dbStatus = isMongoConnected() ? "✅ MongoDB connected" : "⚠️  Memory mode";
         console.log(`\n🚀 Server running → http://localhost:${PORT}`);
-        console.log(`   Database → ${dbStatus}\n`);
+        console.log(`   Database → ${dbStatus}`);
+        console.log(`   Compression → enabled\n`);
     });
 };
 

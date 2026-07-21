@@ -5,7 +5,10 @@ import { VitePWA } from 'vite-plugin-pwa';
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
-    react(),
+    react({
+      // Fast Refresh optimizations
+      include: '**/*.{tsx,ts}',
+    }),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['pwa-icons/*.svg', 'offline.html'],
@@ -48,7 +51,13 @@ export default defineConfig({
                 maxEntries: 100,
                 maxAgeSeconds: 60 * 60 * 24,
               },
-              networkTimeoutSeconds: 5,
+              networkTimeoutSeconds: 3,
+              backgroundSync: {
+                name: 'api-queue',
+                options: {
+                  maxRetentionTime: 24 * 60,
+                },
+              },
             },
           },
           {
@@ -76,27 +85,35 @@ export default defineConfig({
         ],
       },
       devOptions: {
-        enabled: true,
+        enabled: false,
         type: 'module',
       },
     }),
   ],
   build: {
     target: 'es2020',
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true,
+      },
+    },
     rollupOptions: {
       output: {
         manualChunks(id: string) {
           if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/')) return 'vendor';
           if (id.includes('node_modules/socket.io-client')) return 'socket';
-          if (id.includes('node_modules/emoji-picker-react')) return 'emoji';
           if (id.includes('node_modules/framer-motion')) return 'animations';
+          if (id.includes('node_modules/react-hot-toast')) return 'toast';
+          if (id.includes('node_modules/react-router')) return 'router';
         },
       },
     },
     cssCodeSplit: true,
     sourcemap: false,
     reportCompressedSize: false,
-    chunkSizeWarningLimit: 500,
+    chunkSizeWarningLimit: 300,
   },
   server: {
     port: 5174,
@@ -107,5 +124,8 @@ export default defineConfig({
         secure: false,
       },
     },
+  },
+  preview: {
+    port: 4173,
   },
 });

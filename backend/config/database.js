@@ -116,3 +116,59 @@ mongoose.connection.on("error", (err) => {
 });
 
 export const isMongoConnected = () => mongoose.connection.readyState === 1;
+
+// ─── Ensure MongoDB indexes for query performance ────────────────────────────
+export const ensureIndexes = async () => {
+    if (!isMongoConnected()) return;
+    try {
+        const db = mongoose.connection.db;
+        const collections = await db.listCollections().toArray();
+        const collectionNames = collections.map(c => c.name);
+
+        // Message indexes
+        if (collectionNames.includes('messages')) {
+            await db.collection('messages').createIndexes([
+                { key: { fromUserId: 1, toUserId: 1, createdAt: -1 }, background: true },
+                { key: { fromUserId: 1, createdAt: -1 }, background: true },
+                { key: { toUserId: 1, createdAt: -1 }, background: true },
+                { key: { toUserId: 1, isRead: 1, isDeleted: 1 }, background: true },
+                { key: { isDeleted: 1, createdAt: -1 }, background: true },
+                { key: { content: 'text' }, background: true },
+            ]);
+        }
+
+        // User indexes
+        if (collectionNames.includes('users')) {
+            await db.collection('users').createIndexes([
+                { key: { email: 1 }, unique: true, background: true },
+                { key: { location: '2dsphere' }, background: true },
+                { key: { isActive: 1, isBanned: 1, isMember: 1, profileCompletion: 1 }, background: true },
+                { key: { gender: 1, age: 1, lookingFor: 1 }, background: true },
+                { key: { lastSeen: -1 }, background: true },
+                { key: { createdAt: -1 }, background: true },
+            ]);
+        }
+
+        // Match indexes
+        if (collectionNames.includes('matches')) {
+            await db.collection('matches').createIndexes([
+                { key: { userId: 1, matchedUserId: 1 }, background: true },
+                { key: { userId: 1, status: 1, lastMessageAt: -1 }, background: true },
+                { key: { matchedUserId: 1, status: 1 }, background: true },
+                { key: { isPinned: 1, lastMessageAt: -1 }, background: true },
+            ]);
+        }
+
+        // Notification indexes
+        if (collectionNames.includes('notifications')) {
+            await db.collection('notifications').createIndexes([
+                { key: { userId: 1, createdAt: -1 }, background: true },
+                { key: { userId: 1, isRead: 1 }, background: true },
+            ]);
+        }
+
+        console.log("✅ MongoDB indexes ensured for performance.");
+    } catch (err) {
+        console.warn("⚠️  Index creation may have been partially skipped:", err.message?.slice(0, 100));
+    }
+};

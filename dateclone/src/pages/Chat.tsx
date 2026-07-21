@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import AppNavbar from "../component/AppNavbar";
-import EmojiPicker from "../component/EmojiPicker";
 import { messageAPI } from "../services/apiService";
 import { useAuth } from "../context/AuthContext";
 import { useSocket } from "../context/SocketContext";
@@ -86,7 +85,6 @@ const Chat = () => {
     const [typingFrom, setTypingFrom] = useState<string | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [totalUnread, setTotalUnread] = useState(0);
-    const [showEmoji, setShowEmoji] = useState(false);
     const [showReactions, setShowReactions] = useState<string | null>(null);
     const [replyTo, setReplyTo] = useState<Msg | null>(null);
     const [showForward, setShowForward] = useState(false);
@@ -295,7 +293,6 @@ const Chat = () => {
         setInput("");
         setImagePreview(null);
         setReplyTo(null);
-        setShowEmoji(false);
         setSending(true);
 
         const optimistic: Msg = {
@@ -369,12 +366,6 @@ const Chat = () => {
             handleSend({ fileUrl: r.result, fileName: f.name, fileSize: f.size, messageType: "file" });
         };
         r.readAsDataURL(f);
-    };
-
-    // ── GIF support ──────────────────────────────────────────────────────────
-    const quickGifs = ["🎉", "🎊", "🎈", "🎁", "🔥", "💯", "✨", "⭐", "👏", "🙌", "😍", "😂", "🤣", "🥳", "🎂", "🍕", "☕", "🌹", "💕", "💪"];
-    const handleGifSelect = (gif: string) => {
-        handleSend({ gifUrl: gif, messageType: "gif" });
     };
 
     // ── Reactions ──────────────────────────────────────────────────────────────
@@ -850,27 +841,11 @@ const Chat = () => {
                                 </div>
                             )}
 
-                            {/* Quick GIFs */}
-                            <div className="chat-gif-strip">
-                                {quickGifs.slice(0, 10).map(gif => (
-                                    <button key={gif} className="chat-gif-btn" onClick={() => handleGifSelect(gif)}>{gif}</button>
-                                ))}
-                            </div>
-
-                            {/* Emoji picker */}
-                            <EmojiPicker
-                                show={showEmoji}
-                                onClose={() => setShowEmoji(false)}
-                                onSelect={(emoji) => {
-                                    setInput(prev => prev + emoji);
-                                }}
-                            />
-
                             {/* Input bar */}
                             <div className="chat-input-bar">
-                                <button className="chat-attach-btn" onClick={() => fileRef.current?.click()} title="Share image" aria-label="Share image">📷</button>
-                                <button className="chat-attach-btn" onClick={() => docRef.current?.click()} title="Share file" aria-label="Share file">📎</button>
-                                <button className="chat-attach-btn" onClick={() => setShowEmoji(!showEmoji)} title="Emoji" aria-label="Emoji picker">😊</button>
+                                <button className="chat-attach-btn" onClick={() => fileRef.current?.click()} title="Camera / Share image" aria-label="Share image">📷</button>
+                                <button className="chat-attach-btn" onClick={() => docRef.current?.click()} title="Attach file" aria-label="Share file">📎</button>
+                                <button className="chat-attach-btn" title="Voice message" aria-label="Voice message">🎤</button>
                                 <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleImagePick} />
                                 <input ref={docRef} type="file" style={{ display: "none" }} onChange={handleFilePick} />
                                 <textarea
