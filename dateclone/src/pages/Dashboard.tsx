@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { motion, useMotionValue, useTransform, AnimatePresence } from "framer-motion";
+import type { PanInfo } from "framer-motion";
 import AppNavbar from "../component/AppNavbar";
 import { useAuth } from "../context/AuthContext";
 import { useSocket } from "../context/SocketContext";
@@ -20,6 +22,13 @@ interface SuggestedUser {
     isVerified?: boolean;
     isPremium?: boolean;
     interests?: string[];
+}
+
+interface LikedUser {
+    _id: string;
+    firstName: string;
+    lastName: string;
+    profilePicture?: string;
 }
 
 interface RecentConv {
@@ -65,42 +74,111 @@ const fmtTime = (iso: string): string => {
     return d.toLocaleDateString([], { month: "short", day: "numeric" });
 };
 
-// ─── Quick-action shortcut cards ─────────────────────────────────────────────
-const SHORTCUTS = [
-    { icon: "🔥", label: "Discover", sub: "Swipe & match", to: "/discover", color: "#ff1744" },
-    { icon: "💞", label: "Matches", sub: "Your connections", to: "/matches", color: "#e91e63" },
-    { icon: "💬", label: "Messages", sub: "Chat with matches", to: "/chat", color: "#9c27b0" },
-    { icon: "🔔", label: "Alerts", sub: "Notifications", to: "/notifications", color: "#673ab7" },
-    { icon: "👤", label: "Profile", sub: "Edit & boost", to: "/profile", color: "#3f51b5" },
-    { icon: "✨", label: "Premium", sub: "Unlock all features", to: "/premium", color: "#f57f17" },
-];
+const SWIPE_THRESHOLD = 80;
 
-// ─── Completion tips ──────────────────────────────────────────────────────────
-const getTips = (user: any): { icon: string; text: string; to: string }[] => {
-    const tips = [];
-    const u = user as any;
-    if (!u.profilePicture) tips.push({ icon: "📸", text: "Add a profile photo", to: "/profile/edit" });
-    if (!u.aboutMe) tips.push({ icon: "📝", text: "Write your bio", to: "/profile/edit" });
-    if (!u.occupation) tips.push({ icon: "💼", text: "Add your occupation", to: "/profile/edit" });
-    if (!u.interests?.length) tips.push({ icon: "🎯", text: "Add your interests", to: "/profile/edit" });
-    if (!u.city) tips.push({ icon: "📍", text: "Add your location", to: "/profile/edit" });
-    return tips.slice(0, 3);
-};
+// ─── Swipe Card Component ─────────────────────────────────────────────────────
+const SwipeCard = memo(({
+    profile,
+    isOnline,
+    onSwipeEnd,
+    index: cardIndex,
+}: {
+    profile: SuggestedUser;
+    isOnline: boolean;
+    onSwipeEnd: (dir: "left" | "right" | "up") => void;
+    index: number;
+}) => {
+    const initials = `${profile.firstName?.[0] ?? ""}${profile.lastName?.[0] ?? ""}`.toUpperCase();
+    const x = useMotionValue(0);
+    const rotate = useTransform(x, [-200, 0, 200], [-20, 0, 20]);
+    const likeOpacity = useTransform(x, [0, 80], [0, 1]);
+    const nopeOpacity = useTransform(x, [-80, 0], [1, 0]);
+
+    const handleDragEnd = (_: any, info: PanInfo) => {
+        const offset = info.offset.x;
+        const velocity = info.velocity.x;
+        if (Math.abs(offset) > SWIPE_THRESHOLD || Math.abs(velocity) > 400) {
+            if (offset > 0) onSwipeEnd("right");
+            else onSwipeEnd("left");
+        }
+    };
+
+    return (
+        <motion.div
+            className="db-swipe-card"
+            drag={cardIndex === 0 ? "x" : false}
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.85}
+            style={{ x, rotate, zIndex: cardIndex === 0 ? 2 : 0 }}
+            onDragEnd={handleDragEnd}
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ opacity: 0, scale: 0.85, transition: { duration: 0.3 } }}
+            whileTap={{ cursor: "grabbing" }}
+            layout
+        >
+            {/* Photo */}
+            {profile.profilePicture ? (
+                <img src={profile.profilePicture} alt={profile.firstName} className="db-swipe-card-img" loading="lazy" />
+            ) : (
+                <div className="db-swipe-card-ph">{initials}</div>
+            )}
+
+            {/* Swipe stamps */}
+            <motion.div className="db-swipe-stamp db-swipe-stamp--like" style={{ opacity: likeOpacity }}>
+                LIKE
+            </motion.div>
+            <motion.div className="db-swipe-stamp db-swipe-stamp--nope" style={{ opacity: nopeOpacity }}>
+                NOPE
+            </motion.div>
+
+            {/* Overlay */}
+            <div className="db-swipe-card-overlay">
+                <div className="db-swipe-card-name">
+                    {profile.firstName}, <small>{profile.age ?? "?"}</small>
+                    {profile.isVerified && <span className="db-swipe-card-verified">✓</span>}
+                </div>
+                {profile.occupation && (
+                    <div className="db-swipe-card-detail">
+                        <span>💼 {profile.occupation}</span>
+                    </div>
+                )}
+                <div className="db-swipe-card-detail">
+                    <span>📍 {profile.city ?? profile.country ?? "Location"}</span>
+                </div>
+                {profile.interests && profile.interests.length > 0 && (
+                    <div className="db-swipe-card-interests">
+                        {profile.interests.slice(0, 3).map((interest) => (
+                            <span key={interest} className="db-swipe-card-interest">{interest}</span>
+                        ))}
+                        {profile.interests.length > 3 && (
+                            <span className="db-swipe-card-interest">+{profile.interests.length - 3}</span>
+                        )}
+                    </div>
+                )}
+            </div>
+        </motion.div>
+    );
+});
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 const Dashboard = () => {
-    const { user } = useAuth();
+    const { user, logout } = useAuth();
     const navigate = useNavigate();
     const { onlineUsers, suggestionsVersion } = useSocket();
 
     const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
     const [convs, setConvs] = useState<RecentConv[]>([]);
+    const [likedUsers, setLikedUsers] = useState<LikedUser[]>([]);
     const [stats, setStats] = useState<StatsData>({ matches: 0, unreadMessages: 0, unreadNotifications: 0, memberCount: 0 });
     const [loading, setLoading] = useState(true);
     const [suggestionsLoading, setSuggestionsLoading] = useState(true);
     const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
     const [liking, setLiking] = useState<string | null>(null);
     const [suggestionError, setSuggestionError] = useState<SuggestionError>(null);
+    const [swiping, setSwiping] = useState(false);
+    const [swipeIndex, setSwipeIndex] = useState(0);
+    const [profileOpen, setProfileOpen] = useState(false);
 
     // Request deduplication ref
     const pendingRequestRef = useRef<AbortController | null>(null);
@@ -109,11 +187,9 @@ const Dashboard = () => {
     const u = user as any;
     const initials = `${user?.firstName?.[0] ?? ""}${user?.lastName?.[0] ?? ""}`.toUpperCase();
     const completeness = user ? calcCompleteness(u) : 0;
-    const tips = user ? getTips(u) : [];
 
     // ── Fetch suggestions with deduplication ─────────────────────────────────
     const fetchSuggestions = useCallback(async () => {
-        // Cancel any pending request
         if (pendingRequestRef.current) {
             pendingRequestRef.current.abort();
         }
@@ -126,7 +202,6 @@ const Dashboard = () => {
         setSuggestionError(null);
 
         try {
-            // Use a custom fetch to support abort
             const token = sessionStorage.getItem("authToken");
             const API_BASE_URL = import.meta.env.VITE_API_URL || "https://dateclone-backend.onrender.com/api";
             const response = await fetch(`${API_BASE_URL}/matches/suggestions`, {
@@ -150,7 +225,7 @@ const Dashboard = () => {
             if (signal.aborted) return;
 
             if (data.success) {
-                setSuggestions((data.suggestions || []).slice(0, 6));
+                setSuggestions((data.suggestions || []).slice(0, 10));
                 setSuggestionError(null);
             } else {
                 setSuggestionError("server");
@@ -170,21 +245,28 @@ const Dashboard = () => {
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const [convRes, matchRes, notifRes, countRes] = await Promise.allSettled([
+            const [convRes, matchRes, notifRes, countRes, likesRes] = await Promise.allSettled([
                 messageAPI.getAllConversations(),
                 matchAPI.getMatches(),
                 notificationAPI.getUnreadCount(),
                 matchAPI.getMemberCount(),
+                matchAPI.getLikesReceived(),
             ]);
 
             if (convRes.status === "fulfilled") {
-                const list: RecentConv[] = (convRes.value.conversations || []).slice(0, 4);
+                const list: RecentConv[] = (convRes.value.conversations || []).slice(0, 5);
                 setConvs(list);
                 const unread = list.reduce((s: number, c: RecentConv) => s + (c.unreadCount || 0), 0);
                 setStats(prev => ({ ...prev, unreadMessages: unread }));
             }
             if (matchRes.status === "fulfilled")
                 setStats(prev => ({ ...prev, matches: (matchRes.value.matches || []).length }));
+
+            if (likesRes.status === "fulfilled") {
+                const likes = (likesRes.value.likes || []).slice(0, 12);
+                setLikedUsers(likes);
+            }
+
             if (notifRes.status === "fulfilled")
                 setStats(prev => ({ ...prev, unreadNotifications: notifRes.value.count || 0 }));
             if (countRes.status === "fulfilled")
@@ -193,7 +275,7 @@ const Dashboard = () => {
         finally { setLoading(false); }
     }, []);
 
-    // ── Initial load: fetch suggestions + other data on mount ─────────────
+    // ── Initial load on mount ─────────────────────────────────────────────
     useEffect(() => {
         mountedRef.current = true;
         fetchSuggestions();
@@ -217,34 +299,91 @@ const Dashboard = () => {
     const handleLike = async (uid: string) => {
         if (liking) return;
         setLiking(uid);
+        setSwiping(true);
         try {
             await matchAPI.likeUser(uid);
             setLikedIds(prev => new Set([...prev, uid]));
-            // Optimistically remove the liked user from suggestions
             setSuggestions(prev => prev.filter(s => s._id !== uid));
         } catch (err: any) {
-            // Log the full error to console for debugging
             console.error("[Dashboard Like] Error:", err);
-            // Display the actual backend error message
             const message = err?.message || "Failed to like user";
-            // Show toast or alert with the real error
             if (message.includes("already liked") || message.includes("Already liked")) {
-                // Already liked — still add to liked set so UI updates
                 setLikedIds(prev => new Set([...prev, uid]));
+                setSuggestions(prev => prev.filter(s => s._id !== uid));
             } else if (message.includes("yourself")) {
                 alert("You cannot like yourself!");
             } else {
-                // Show descriptive error
                 alert(message);
             }
         }
-        finally { setLiking(null); }
+        finally {
+            setLiking(null);
+            setSwiping(false);
+        }
     };
 
-    // ── Handle suggestion retry (network error) ────────────────────────────
+    const handlePass = async (uid: string) => {
+        if (liking) return;
+        setLiking(uid);
+        setSwiping(true);
+        try {
+            await matchAPI.passUser(uid);
+            setSuggestions(prev => prev.filter(s => s._id !== uid));
+        } catch { /* silent */ }
+        finally {
+            setLiking(null);
+            setSwiping(false);
+        }
+    };
+
+    const handleSuperLike = async (uid: string) => {
+        if (liking) return;
+        setLiking(uid);
+        setSwiping(true);
+        try {
+            await matchAPI.superLikeUser(uid);
+            setSuggestions(prev => prev.filter(s => s._id !== uid));
+        } catch (err: any) {
+            console.error("[Dashboard SuperLike] Error:", err);
+            alert(err?.message || "Failed to super like");
+        }
+        finally {
+            setLiking(null);
+            setSwiping(false);
+        }
+    };
+
+    const handleSwipeEnd = (dir: "left" | "right" | "up") => {
+        const current = suggestions[swipeIndex];
+        if (!current || swiping) return;
+        if (dir === "right") handleLike(current._id);
+        else if (dir === "left") handlePass(current._id);
+        else if (dir === "up") handleSuperLike(current._id);
+        setTimeout(() => {
+            setSwipeIndex(prev => prev + 1);
+        }, 300);
+    };
+
+    // ── Handle suggestion retry ────────────────────────────────────────────
     const handleRetry = () => {
         fetchSuggestions();
     };
+
+    const getTips = (): { icon: string; text: string; to: string }[] => {
+        const tips = [];
+        if (!u.profilePicture) tips.push({ icon: "📸", text: "Add a profile photo", to: "/profile/edit" });
+        if (!u.aboutMe) tips.push({ icon: "📝", text: "Write your bio", to: "/profile/edit" });
+        if (!u.occupation) tips.push({ icon: "💼", text: "Add your occupation", to: "/profile/edit" });
+        if (!u.interests?.length) tips.push({ icon: "🎯", text: "Add your interests", to: "/profile/edit" });
+        if (!u.city) tips.push({ icon: "📍", text: "Add your location", to: "/profile/edit" });
+        return tips.slice(0, 3);
+    };
+    const tips = user ? getTips() : [];
+
+    // Get current profile for swipe deck
+    const currentProfile = suggestions[swipeIndex];
+    const nextProfile = suggestions[swipeIndex + 1];
+    const nextNextProfile = suggestions[swipeIndex + 2];
 
     // ─────────────────────────────────────────────────────────────────────────
     return (
@@ -252,330 +391,453 @@ const Dashboard = () => {
             <AppNavbar unreadMessages={stats.unreadMessages} />
 
             <div className="dashboard">
+                <div className="dashboard-inner">
 
-                {/* ── Hero Welcome Banner ─────────────────────────────────────────── */}
-                <section className="db-hero">
-                    <div className="db-hero-bg" aria-hidden="true">
-                        <span className="db-hero-blob db-blob-1" />
-                        <span className="db-hero-blob db-blob-2" />
-                        <span className="db-hero-blob db-blob-3" />
-                    </div>
-
-                    <div className="db-hero-inner">
-                        {/* Avatar */}
-                        <div className="db-hero-avatar-wrap">
-                            {user?.profilePicture
-                                ? <img src={user.profilePicture} alt="You" className="db-hero-avatar" />
-                                : <div className="db-hero-avatar db-hero-avatar-ph">{initials}</div>}
-                            <span className="db-hero-online-dot" title="Online" />
+                    {/* ── Header ──────────────────────────────────────────────── */}
+                    <div className="db-header">
+                        <div className="db-header-left">
+                            <h1>{getGreeting()}, {user?.firstName} <span>👋</span></h1>
+                            <p className="db-header-sub">Ready to find your perfect match?</p>
                         </div>
-
-                        {/* Text */}
-                        <div className="db-hero-text">
-                            <p className="db-greeting">{getGreeting()},</p>
-                            <h1 className="db-hero-name">{user?.firstName} {user?.lastName} 👋</h1>
-                            <p className="db-hero-sub">
-                                {completeness < 60
-                                    ? "Complete your profile to get more matches!"
-                                    : stats.matches > 0
-                                        ? `You have ${stats.matches} match${stats.matches !== 1 ? "es" : ""} waiting for you 💕`
-                                        : "Start swiping and find your perfect match ✨"}
-                            </p>
-                        </div>
-
-                        {/* Hero actions */}
-                        <div className="db-hero-actions">
-                            <button className="db-hero-cta" onClick={() => navigate("/discover")}>
-                                🔥 Start Swiping
-                            </button>
-                            {!user?.isPremium && (
-                                <button className="db-hero-cta db-hero-cta--gold" onClick={() => navigate("/premium")}>
-                                    ✨ Go Premium
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                </section>
-
-                {/* ── Main Content ────────────────────────────────────────────────── */}
-                <div className="db-content">
-
-                    {/* ── Left column ─────────────────────────────────────────────── */}
-                    <div className="db-col-main">
-
-                        {/* Stats row */}
-                        <div className="db-stats-row">
-                            {[
-                                { icon: "💞", val: stats.matches, label: "Matches", to: "/matches", color: "#ff1744" },
-                                { icon: "💬", val: stats.unreadMessages, label: "Unread", to: "/chat", color: "#9c27b0", badge: stats.unreadMessages > 0 },
-                                { icon: "🔔", val: stats.unreadNotifications, label: "Alerts", to: "/notifications", color: "#673ab7", badge: stats.unreadNotifications > 0 },
-                                { icon: "🏆", val: user?.isPremium ? "✨" : "💎", label: user?.isPremium ? "Premium" : "Upgrade", to: "/premium", color: "#ff6f00" },
-                            ].map((s, i) => (
-                                <Link key={i} to={s.to} className="db-stat-card" style={{ "--stat-color": s.color } as any}>
-                                    <div className="db-stat-icon">{s.icon}</div>
-                                    <div className="db-stat-body">
-                                        <span className="db-stat-val">
-                                            {s.val}
-                                            {s.badge && s.val > 0 && <span className="db-stat-badge" />}
-                                        </span>
-                                        <span className="db-stat-label">{s.label}</span>
-                                    </div>
-                                </Link>
-                            ))}
-                        </div>
-
-                        {/* Suggested Matches */}
-                        <div className="db-section">
-                            <div className="db-section-head">
-                                <h2 className="db-section-title">💫 Suggested for You</h2>
-                                <Link to="/discover" className="db-section-link">See all →</Link>
-                            </div>
-
-                            {suggestionsLoading ? (
-                                <div className="db-suggestions-grid">
-                                    {[...Array(6)].map((_, i) => (
-                                        <div key={i} className="db-match-card db-match-card--skeleton">
-                                            <div className="skeleton db-match-photo-sk" />
-                                            <div className="skeleton db-match-name-sk" />
-                                            <div className="skeleton db-match-sub-sk" />
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : suggestionError === "network" ? (
-                                <div className="db-empty db-empty--error">
-                                    <span>🌐</span>
-                                    <p>Unable to load suggestions. Check your connection.</p>
-                                    <button className="btn btn-primary btn-sm" onClick={handleRetry}>
-                                        Try Again
-                                    </button>
-                                </div>
-                            ) : suggestionError === "server" ? (
-                                <div className="db-empty db-empty--error">
-                                    <span>⚠️</span>
-                                    <p>Something went wrong. Please try again later.</p>
-                                    <button className="btn btn-primary btn-sm" onClick={handleRetry}>
-                                        Retry
-                                    </button>
-                                </div>
-                            ) : suggestions.length === 0 ? (
-                                <div className="db-empty">
-                                    <span>💫</span>
-                                    <p>No suggestions yet. Check back soon!</p>
-                                    <button className="btn btn-primary btn-sm" onClick={() => navigate("/discover")}>
-                                        Explore People
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="db-suggestions-grid">
-                                    {suggestions.map((p, i) => {
-                                        const pi = `${p.firstName?.[0] ?? ""}${p.lastName?.[0] ?? ""}`.toUpperCase();
-                                        const liked = likedIds.has(p._id);
-                                        return (
-                                            <div key={p._id} className="db-match-card" style={{ animationDelay: `${i * 0.06}s` }}>
-                                                {/* Photo */}
-                                                <div className="db-match-photo" onClick={() => navigate(`/profile/${p._id}`)}>
-                                                    {p.profilePicture
-                                                        ? <img src={p.profilePicture} alt={p.firstName} />
-                                                        : <div className="db-match-photo-ph">{pi}</div>}
-                                                    {p.compatibilityScore && (
-                                                        <span className="db-match-compat">{p.compatibilityScore}%</span>
-                                                    )}
-                                                    {onlineUsers.has(p._id) && (
-                                                        <span className="db-match-online" />
-                                                    )}
-                                                    {p.isVerified && <span className="db-match-verified">✓</span>}
-                                                </div>
-
-                                                {/* Info */}
-                                                <div className="db-match-info">
-                                                    <h3 className="db-match-name">{p.firstName}, {p.age ?? "?"}</h3>
-                                                    <p className="db-match-loc">
-                                                        {p.city ?? p.country ?? "Africa"}
-                                                    </p>
-                                                    {p.occupation && (
-                                                        <p className="db-match-occ">{p.occupation}</p>
-                                                    )}
-                                                </div>
-
-                                                {/* Actions */}
-                                                <div className="db-match-actions">
-                                                    <button
-                                                        className={`db-like-btn ${liked ? "liked" : ""}`}
-                                                        onClick={() => !liked && handleLike(p._id)}
-                                                        disabled={liking === p._id}
-                                                        aria-label={liked ? "Liked" : "Like"}
-                                                        title={liked ? "Liked!" : "Like"}
-                                                    >
-                                                        {liking === p._id
-                                                            ? <span className="db-like-spin" />
-                                                            : liked ? "💖" : "❤️"}
-                                                    </button>
-                                                    <button
-                                                        className="db-view-btn"
-                                                        onClick={() => navigate(`/profile/${p._id}`)}
-                                                    >
-                                                        View
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Recent Messages */}
-                        <div className="db-section">
-                            <div className="db-section-head">
-                                <h2 className="db-section-title">💬 Recent Messages</h2>
-                                <Link to="/chat" className="db-section-link">All chats →</Link>
-                            </div>
-
-                            {loading ? (
-                                <div className="db-convs-list">
-                                    {[...Array(3)].map((_, i) => (
-                                        <div key={i} className="db-conv-item db-conv-skeleton">
-                                            <div className="skeleton db-conv-avatar-sk" />
-                                            <div className="db-conv-sk-body">
-                                                <div className="skeleton db-conv-name-sk" />
-                                                <div className="skeleton db-conv-msg-sk" />
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : convs.length === 0 ? (
-                                <div className="db-empty">
-                                    <span>💬</span>
-                                    <p>No conversations yet. Match with someone to start chatting!</p>
-                                    <button className="btn btn-primary btn-sm" onClick={() => navigate("/matches")}>
-                                        View Matches
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="db-convs-list">
-                                    {convs.map(c => {
-                                        const ci = `${c.user.firstName?.[0] ?? ""}${c.user.lastName?.[0] ?? ""}`.toUpperCase();
-                                        return (
-                                            <div key={c._id} className="db-conv-item" onClick={() => navigate(`/chat/${c.user._id}`)}>
-                                                <div className="db-conv-avatar-wrap">
-                                                    {c.user.profilePicture
-                                                        ? <img src={c.user.profilePicture} alt="" className="db-conv-avatar" />
-                                                        : <div className="db-conv-avatar db-conv-avatar-ph">{ci}</div>}
-                                                    {onlineUsers.has(c.user._id) && <span className="db-conv-online" />}
-                                                </div>
-                                                <div className="db-conv-body">
-                                                    <div className="db-conv-top">
-                                                        <span className="db-conv-name">{c.user.firstName} {c.user.lastName}</span>
-                                                        {c.lastMessage && <span className="db-conv-time">{fmtTime(c.lastMessage.createdAt)}</span>}
-                                                    </div>
-                                                    <p className="db-conv-preview">
-                                                        {c.lastMessage?.content ?? "Say hello! 👋"}
-                                                    </p>
-                                                </div>
-                                                {c.unreadCount > 0 && (
-                                                    <span className="db-conv-unread">{c.unreadCount}</span>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* ── Right column / sidebar ────────────────────────────────────── */}
-                    <div className="db-col-side">
-
-                        {/* Profile card */}
-                        <div className="db-profile-card">
-                            <div className="db-pc-banner" />
-                            <div className="db-pc-avatar-wrap">
-                                {user?.profilePicture
-                                    ? <img src={user.profilePicture} alt="You" className="db-pc-avatar" />
-                                    : <div className="db-pc-avatar db-pc-avatar-ph">{initials}</div>}
-                                {user?.isPremium && <span className="db-pc-premium">✨</span>}
-                            </div>
-                            <div className="db-pc-info">
-                                <h3>{user?.firstName} {user?.lastName}</h3>
-                                {u?.city && <p className="db-pc-loc">📍 {u.city}{u.country ? `, ${u.country}` : ""}</p>}
-                            </div>
-
-                            {/* Completeness ring */}
-                            <div className="db-pc-completion">
-                                <div className="db-completion-ring">
-                                    <svg viewBox="0 0 44 44" className="db-ring-svg">
-                                        <circle cx="22" cy="22" r="18" className="db-ring-track" />
-                                        <circle
-                                            cx="22" cy="22" r="18"
-                                            className="db-ring-fill"
-                                            strokeDasharray={`${(completeness / 100) * 113} 113`}
-                                        />
-                                    </svg>
-                                    <span className="db-ring-pct">{completeness}%</span>
-                                </div>
-                                <div className="db-completion-text">
-                                    <p className="db-completion-label">Profile</p>
-                                    <p className="db-completion-sub">Complete</p>
-                                </div>
-                            </div>
-
-                            <Link to="/profile/edit" className="db-pc-edit-btn">
-                                ✏️ Edit Profile
+                        <div className="db-header-right">
+                            <Link to="/notifications" className="db-header-notif" aria-label="Notifications">
+                                🔔
+                                {stats.unreadNotifications > 0 && (
+                                    <span className="db-header-notif-dot" />
+                                )}
                             </Link>
+                            <div className="db-header-avatar" onClick={() => setProfileOpen(!profileOpen)}>
+                                {user?.profilePicture ? (
+                                    <img src={user.profilePicture} alt="Profile" />
+                                ) : (
+                                    <div className="db-header-avatar-ph">{initials}</div>
+                                )}
+                                {profileOpen && (
+                                    <div className="db-header-dropdown" onClick={e => e.stopPropagation()}>
+                                        <Link to="/profile" onClick={() => setProfileOpen(false)}>👤 My Profile</Link>
+                                        <Link to="/profile/edit" onClick={() => setProfileOpen(false)}>✏️ Edit Profile</Link>
+                                        <Link to="/settings" onClick={() => setProfileOpen(false)}>⚙️ Settings</Link>
+                                        <Link to="/premium" onClick={() => setProfileOpen(false)}>✨ Premium</Link>
+                                        <div className="dropdown-divider" />
+                                        <button onClick={() => { setProfileOpen(false); logout(); }}>🚪 Log Out</button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ── Statistics Cards ─────────────────────────────────────── */}
+                    <div className="db-stats-row">
+                        <Link to="/discover" className="db-stat-card">
+                            <div className="db-stat-top">
+                                <div className="db-stat-icon db-stat-icon--likes">❤️</div>
+                                <span className="db-stat-arrow">→</span>
+                            </div>
+                            <div>
+                                <div className="db-stat-value">{likedUsers.length || 0}</div>
+                                <div className="db-stat-label">Likes</div>
+                                <div className="db-stat-sub">See who likes you</div>
+                            </div>
+                        </Link>
+
+                        <Link to="/matches" className="db-stat-card">
+                            <div className="db-stat-top">
+                                <div className="db-stat-icon db-stat-icon--matches">💬</div>
+                                <span className="db-stat-arrow">→</span>
+                            </div>
+                            <div>
+                                <div className="db-stat-value">{stats.matches}</div>
+                                <div className="db-stat-label">Matches</div>
+                                <div className="db-stat-sub">Start a conversation</div>
+                            </div>
+                        </Link>
+
+                        <Link to="/discover" className="db-stat-card">
+                            <div className="db-stat-top">
+                                <div className="db-stat-icon db-stat-icon--views">👁</div>
+                                <span className="db-stat-arrow">→</span>
+                            </div>
+                            <div>
+                                <div className="db-stat-value">{stats.memberCount || 0}</div>
+                                <div className="db-stat-label">Profile Views</div>
+                                <div className="db-stat-sub">This week</div>
+                            </div>
+                        </Link>
+
+                        <Link to="/premium" className="db-stat-card">
+                            <div className="db-stat-top">
+                                <div className="db-stat-icon db-stat-icon--premium">💎</div>
+                                <span className="db-stat-arrow">→</span>
+                            </div>
+                            <div>
+                                {user?.isPremium ? (
+                                    <>
+                                        <div className="db-stat-value">
+                                            <span className="db-premium-badge">✅ Premium Active</span>
+                                        </div>
+                                        <div className="db-stat-label" style={{ marginTop: 4 }}>Unlock all features</div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="db-stat-value">Go Premium</div>
+                                        <div className="db-stat-label">Unlock all features</div>
+                                        <div className="db-stat-sub">Upgrade now</div>
+                                    </>
+                                )}
+                            </div>
+                        </Link>
+                    </div>
+
+                    {/* ── Main Content Grid ─────────────────────────────────────── */}
+                    <div className="db-main">
+
+                        {/* ── LEFT COLUMN ───────────────────────────────────────── */}
+                        <div className="db-main-left">
+
+                            {/* ── Discover People (Swipe Deck) ──────────────────── */}
+                            <div className="db-card">
+                                <div className="db-card-header">
+                                    <div>
+                                        <div className="db-card-title">Discover People</div>
+                                        <div className="db-card-subtitle">Find your perfect match</div>
+                                    </div>
+                                    <button className="db-filters-btn" onClick={() => navigate("/discover")}>
+                                        🔍 Filters
+                                    </button>
+                                </div>
+                                <div className="db-card-body">
+                                    {suggestionsLoading ? (
+                                        <div className="db-swipe-loader">
+                                            <div className="db-swipe-spinner" />
+                                        </div>
+                                    ) : suggestionError === "network" ? (
+                                        <div className="db-swipe-empty">
+                                            <span>🌐</span>
+                                            <p>Unable to load suggestions. Check your connection.</p>
+                                            <button className="db-error-btn" onClick={handleRetry}>Try Again</button>
+                                        </div>
+                                    ) : suggestionError === "server" ? (
+                                        <div className="db-swipe-empty">
+                                            <span>⚠️</span>
+                                            <p>Something went wrong. Please try again later.</p>
+                                            <button className="db-error-btn" onClick={handleRetry}>Retry</button>
+                                        </div>
+                                    ) : suggestions.length === 0 || !currentProfile ? (
+                                        <div className="db-swipe-empty">
+                                            <span>💫</span>
+                                            <p>No more profiles to discover right now. Check back soon!</p>
+                                            <button className="db-error-btn" onClick={() => navigate("/discover")}>
+                                                Explore More
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="db-swipe-container">
+                                                <AnimatePresence mode="popLayout">
+                                                    {/* Back card 2 */}
+                                                    {nextNextProfile && (
+                                                        <div
+                                                            key={nextNextProfile._id + "-back2"}
+                                                            className="db-swipe-card db-swipe-card--back-2"
+                                                        >
+                                                            {nextNextProfile.profilePicture ? (
+                                                                <img src={nextNextProfile.profilePicture} alt="" className="db-swipe-card-img" loading="lazy" />
+                                                            ) : (
+                                                                <div className="db-swipe-card-ph">
+                                                                    {`${nextNextProfile.firstName?.[0] ?? ""}${nextNextProfile.lastName?.[0] ?? ""}`.toUpperCase()}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Back card 1 */}
+                                                    {nextProfile && (
+                                                        <div
+                                                            key={nextProfile._id + "-back1"}
+                                                            className="db-swipe-card db-swipe-card--back-1"
+                                                        >
+                                                            {nextProfile.profilePicture ? (
+                                                                <img src={nextProfile.profilePicture} alt="" className="db-swipe-card-img" loading="lazy" />
+                                                            ) : (
+                                                                <div className="db-swipe-card-ph">
+                                                                    {`${nextProfile.firstName?.[0] ?? ""}${nextProfile.lastName?.[0] ?? ""}`.toUpperCase()}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Active card */}
+                                                    {currentProfile && (
+                                                        <SwipeCard
+                                                            key={currentProfile._id}
+                                                            profile={currentProfile}
+                                                            isOnline={onlineUsers.has(currentProfile._id)}
+                                                            onSwipeEnd={handleSwipeEnd}
+                                                            index={0}
+                                                        />
+                                                    )}
+                                                </AnimatePresence>
+                                            </div>
+
+                                            {/* Swipe Action Buttons */}
+                                            <div className="db-swipe-actions">
+                                                <button
+                                                    className="db-swipe-btn db-swipe-btn--pass"
+                                                    onClick={() => handlePass(currentProfile._id)}
+                                                    disabled={!!liking || swiping}
+                                                    aria-label="Pass"
+                                                >
+                                                    ❌
+                                                </button>
+                                                <button
+                                                    className="db-swipe-btn db-swipe-btn--super"
+                                                    onClick={() => handleSuperLike(currentProfile._id)}
+                                                    disabled={!!liking || swiping}
+                                                    aria-label="Super Like"
+                                                >
+                                                    ⭐
+                                                </button>
+                                                <button
+                                                    className="db-swipe-btn db-swipe-btn--like"
+                                                    onClick={() => handleLike(currentProfile._id)}
+                                                    disabled={!!liking || swiping}
+                                                    aria-label="Like"
+                                                >
+                                                    ❤️
+                                                </button>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* ── People Who Liked You + Recent Messages ──────────── */}
+                            <div className="db-split-row">
+
+                                {/* People Who Liked You */}
+                                <div className="db-card">
+                                    <div className="db-card-header">
+                                        <div>
+                                            <div className="db-card-title">People Who Liked You</div>
+                                            {!user?.isPremium && (
+                                                <div className="db-card-subtitle">Upgrade to see who</div>
+                                            )}
+                                        </div>
+                                        <Link to="/discover" className="db-card-link">View all</Link>
+                                    </div>
+                                    <div className="db-card-body">
+                                        {likedUsers.length === 0 ? (
+                                            <div className="db-liked-empty">No likes yet</div>
+                                        ) : user?.isPremium ? (
+                                            <div className="db-liked-row">
+                                                {likedUsers.map((lu) => {
+                                                    const li = `${lu.firstName?.[0] ?? ""}${lu.lastName?.[0] ?? ""}`.toUpperCase();
+                                                    return (
+                                                        <div key={lu._id} className="db-liked-item" onClick={() => navigate(`/profile/${lu._id}`)}>
+                                                            {lu.profilePicture ? (
+                                                                <img src={lu.profilePicture} alt={lu.firstName} className="db-liked-avatar" loading="lazy" />
+                                                            ) : (
+                                                                <div className="db-liked-avatar-ph">{li}</div>
+                                                            )}
+                                                            <span className="db-liked-name">{lu.firstName}</span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <div className="db-liked-row">
+                                                {likedUsers.slice(0, 6).map((lu) => {
+                                                    const li = `${lu.firstName?.[0] ?? ""}${lu.lastName?.[0] ?? ""}`.toUpperCase();
+                                                    return (
+                                                        <div key={lu._id} className="db-liked-item">
+                                                            {lu.profilePicture ? (
+                                                                <img src={lu.profilePicture} alt="" className="db-liked-avatar db-liked-avatar--blurred" />
+                                                            ) : (
+                                                                <div className="db-liked-avatar-ph db-liked-avatar--blurred">{li}</div>
+                                                            )}
+                                                            <span className="db-liked-name">••••</span>
+                                                        </div>
+                                                    );
+                                                })}
+                                                <div className="db-liked-upgrade">
+                                                    <p>Upgrade to Premium to see who likes you</p>
+                                                    <button className="db-liked-upgrade-btn" onClick={() => navigate("/premium")}>
+                                                        Upgrade Now
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Recent Messages */}
+                                <div className="db-card">
+                                    <div className="db-card-header">
+                                        <div>
+                                            <div className="db-card-title">Recent Messages</div>
+                                        </div>
+                                        <Link to="/chat" className="db-card-link">View all</Link>
+                                    </div>
+                                    <div className="db-card-body">
+                                        {loading ? (
+                                            <div className="db-msg-list">
+                                                {[...Array(3)].map((_, i) => (
+                                                    <div key={i} className="db-msg-item" style={{ pointerEvents: "none" }}>
+                                                        <div className="db-skeleton db-skeleton--circle" style={{ width: 48, height: 48 }} />
+                                                        <div className="db-msg-body" style={{ flex: 1 }}>
+                                                            <div className="db-skeleton db-skeleton--text" />
+                                                            <div className="db-skeleton db-skeleton--text-sm" />
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : convs.length === 0 ? (
+                                            <div className="db-liked-empty">No conversations yet</div>
+                                        ) : (
+                                            <div className="db-msg-list">
+                                                {convs.map(c => {
+                                                    const ci = `${c.user.firstName?.[0] ?? ""}${c.user.lastName?.[0] ?? ""}`.toUpperCase();
+                                                    return (
+                                                        <div key={c._id} className="db-msg-item" onClick={() => navigate(`/chat/${c.user._id}`)}>
+                                                            <div className="db-msg-avatar-wrap">
+                                                                {c.user.profilePicture ? (
+                                                                    <img src={c.user.profilePicture} alt="" className="db-msg-avatar" loading="lazy" />
+                                                                ) : (
+                                                                    <div className="db-msg-avatar-ph">{ci}</div>
+                                                                )}
+                                                                {onlineUsers.has(c.user._id) && <span className="db-msg-online" />}
+                                                            </div>
+                                                            <div className="db-msg-body">
+                                                                <div className="db-msg-top">
+                                                                    <span className="db-msg-name">{c.user.firstName} {c.user.lastName}</span>
+                                                                    {c.lastMessage && <span className="db-msg-time">{fmtTime(c.lastMessage.createdAt)}</span>}
+                                                                </div>
+                                                                <p className="db-msg-preview">
+                                                                    {c.lastMessage?.content ?? "Say hello! 👋"}
+                                                                </p>
+                                                            </div>
+                                                            {c.unreadCount > 0 && (
+                                                                <span className="db-msg-unread">{c.unreadCount}</span>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
-                        {/* Profile tips */}
-                        {tips.length > 0 && (
-                            <div className="db-tips-card">
-                                <div className="db-tips-head">
-                                    <span className="db-tips-badge">💡 Tips</span>
-                                    <h3>Boost your profile</h3>
+                        {/* ── RIGHT COLUMN (Sidebar) ────────────────────────────── */}
+                        <div className="db-main-right">
+
+                            {/* Profile Card */}
+                            <div className="db-card db-profile-card">
+                                <div className="db-profile-banner" />
+                                <div className="db-profile-avatar-wrap">
+                                    {user?.profilePicture ? (
+                                        <img src={user.profilePicture} alt="You" className="db-profile-avatar" />
+                                    ) : (
+                                        <div className="db-profile-avatar-ph">{initials}</div>
+                                    )}
+                                    {user?.isPremium && <span className="db-profile-premium-badge">✨</span>}
                                 </div>
-                                <div className="db-tips-list">
-                                    {tips.map((tip, i) => (
-                                        <Link key={i} to={tip.to} className="db-tip-item">
-                                            <span className="db-tip-icon">{tip.icon}</span>
-                                            <span className="db-tip-text">{tip.text}</span>
-                                            <span className="db-tip-arrow">→</span>
+                                <div className="db-profile-name">{user?.firstName} {user?.lastName}</div>
+                                {u?.city && <div className="db-profile-loc">📍 {u.city}{u.country ? `, ${u.country}` : ""}</div>}
+
+                                <div className="db-profile-stats">
+                                    <div className="db-profile-stat">
+                                        <div className="db-profile-stat-val">{completeness}%</div>
+                                        <div className="db-profile-stat-label">Profile</div>
+                                    </div>
+                                    <div className="db-profile-stat">
+                                        <div className="db-profile-stat-val">{stats.matches}</div>
+                                        <div className="db-profile-stat-label">Matches</div>
+                                    </div>
+                                    <div className="db-profile-stat">
+                                        <div className="db-profile-stat-val">{stats.memberCount}</div>
+                                        <div className="db-profile-stat-label">Members</div>
+                                    </div>
+                                </div>
+
+                                <Link to="/profile/edit" className="db-profile-edit-btn">
+                                    ✏️ Edit Profile
+                                </Link>
+                            </div>
+
+                            {/* Quick Actions */}
+                            <div className="db-card db-quick-actions">
+                                <div className="db-quick-title">Quick Actions</div>
+                                <div className="db-quick-grid">
+                                    {[
+                                        { icon: "🔥", label: "Discover", sub: "Find matches", to: "/discover" },
+                                        { icon: "💞", label: "Matches", sub: "Connections", to: "/matches" },
+                                        { icon: "💬", label: "Chat", sub: "Messages", to: "/chat" },
+                                        { icon: "👤", label: "Profile", sub: "Edit profile", to: "/profile/edit" },
+                                    ].map((s) => (
+                                        <Link key={s.to} to={s.to} className="db-quick-item">
+                                            <span className="db-quick-icon">{s.icon}</span>
+                                            <span className="db-quick-label">{s.label}</span>
+                                            <span className="db-quick-sub">{s.sub}</span>
                                         </Link>
                                     ))}
                                 </div>
                             </div>
-                        )}
 
-                        {/* Quick shortcuts */}
-                        <div className="db-shortcuts-card">
-                            <h3 className="db-shortcuts-title">Quick Actions</h3>
-                            <div className="db-shortcuts-grid">
-                                {SHORTCUTS.map(s => (
-                                    <Link
-                                        key={s.to}
-                                        to={s.to}
-                                        className="db-shortcut"
-                                        style={{ "--sc-color": s.color } as any}
-                                    >
-                                        <span className="db-sc-icon">{s.icon}</span>
-                                        <span className="db-sc-label">{s.label}</span>
-                                        <span className="db-sc-sub">{s.sub}</span>
-                                    </Link>
-                                ))}
+                            {/* Tips (if profile incomplete) */}
+                            {tips.length > 0 && (
+                                <div className="db-card db-tips-card">
+                                    <div className="db-tips-badge">💡 Tips</div>
+                                    <h3>Boost your profile</h3>
+                                    <div className="db-tips-list">
+                                        {tips.map((tip, i) => (
+                                            <Link key={i} to={tip.to} className="db-tip-item">
+                                                <span className="db-tip-icon">{tip.icon}</span>
+                                                <span className="db-tip-text">{tip.text}</span>
+                                                <span className="db-tip-arrow">→</span>
+                                            </Link>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* ── Premium Banner (Bottom) ──────────────────────────────── */}
+                    {!user?.isPremium && (
+                        <div className="db-premium-banner">
+                            <div className="db-premium-banner-inner">
+                                <div className="db-premium-banner-left">
+                                    <div className="db-premium-banner-title">Go Premium 💎</div>
+                                    <div className="db-premium-banner-sub">
+                                        Get unlimited likes, advanced filters, read receipts and more.
+                                    </div>
+                                    <div className="db-premium-features">
+                                        <div className="db-premium-feature">
+                                            <span className="db-premium-feature-icon">✓</span>
+                                            Unlimited Likes
+                                        </div>
+                                        <div className="db-premium-feature">
+                                            <span className="db-premium-feature-icon">✓</span>
+                                            See Who Liked You
+                                        </div>
+                                        <div className="db-premium-feature">
+                                            <span className="db-premium-feature-icon">✓</span>
+                                            Read Receipts
+                                        </div>
+                                        <div className="db-premium-feature">
+                                            <span className="db-premium-feature-icon">✓</span>
+                                            Priority Support
+                                        </div>
+                                    </div>
+                                </div>
+                                <button className="db-premium-banner-btn" onClick={() => navigate("/premium")}>
+                                    Unlock Premium →
+                                </button>
                             </div>
                         </div>
-
-                        {/* Premium upsell (free users only) */}
-                        {!user?.isPremium && (
-                            <div className="db-premium-card" onClick={() => navigate("/premium")}>
-                                <div className="db-premium-stars" aria-hidden="true">
-                                    {["✨", "💎", "⭐"].map((e, i) => (
-                                        <span key={i} className="db-prem-star" style={{ animationDelay: `${i * 0.4}s` }}>{e}</span>
-                                    ))}
-                                </div>
-                                <h3>Go Premium 💎</h3>
-                                <p>See who liked you, unlimited likes, and priority visibility.</p>
-                                <div className="db-premium-cta">Unlock Now →</div>
-                            </div>
-                        )}
-                    </div>
+                    )}
                 </div>
             </div>
         </div>
