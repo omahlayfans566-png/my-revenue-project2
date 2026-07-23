@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
-import type { PanInfo } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
 import AppNavbar from "../component/AppNavbar";
 import { discoveryAPI, matchAPI } from "../services/apiService";
@@ -60,209 +59,149 @@ const DEFAULT_FILTERS: FilterState = {
     religion: "",
 };
 
-const SWIPE_THRESHOLD = 100;
+// ─── Skeleton Loader ──────────────────────────────────────────────────────────
+const ProfileCardSkeleton = () => (
+    <div className="discover-card-skeleton">
+        <div className="skeleton-photo" />
+        <div className="skeleton-overlay">
+            <div className="skeleton-name" />
+            <div className="skeleton-location" />
+            <div className="skeleton-occupation" />
+        </div>
+        <div className="skeleton-actions">
+            <div className="skeleton-btn skeleton-pass" />
+            <div className="skeleton-btn skeleton-like" />
+        </div>
+    </div>
+);
 
-// ─── Profile Card ──────────────────────────────────────────────────────────────
+// ─── Profile Card ─────────────────────────────────────────────────────────────
 const ProfileCard = ({
     profile,
     isOnline,
-    onSwipeEnd,
-    onInfo,
-    onMore,
-    index: cardIndex,
+    onLike,
+    onPass,
+    onViewProfile,
+    index,
 }: {
     profile: Profile;
     isOnline: boolean;
-    onSwipeEnd: (dir: "left" | "right" | "up") => void;
-    onInfo: () => void;
-    onMore: () => void;
+    onLike: () => void;
+    onPass: () => void;
+    onViewProfile: () => void;
     index: number;
 }) => {
-    const [photoIdx, setPhotoIdx] = useState(0);
-    const photos = [profile.profilePicture, ...(profile.photos || [])].filter(Boolean) as string[];
+    const [imgLoaded, setImgLoaded] = useState(false);
+    const [liking, setLiking] = useState(false);
+    const [passing, setPassing] = useState(false);
     const initials = `${profile.firstName?.[0] ?? ""}${profile.lastName?.[0] ?? ""}`.toUpperCase();
+    const photoUrl = profile.profilePicture || profile.photos?.[0] || "";
 
-    const x = useMotionValue(0);
-    const rotate = useTransform(x, [-300, 0, 300], [-25, 0, 25]);
-    const opacity = useTransform(x, [-300, -100, 0, 100, 300], [0, 1, 1, 1, 0]);
-    const likeOpacity = useTransform(x, [0, 100], [0, 1]);
-    const nopeOpacity = useTransform(x, [-100, 0], [1, 0]);
-
-    const handleDragEnd = (_: any, info: PanInfo) => {
-        const offset = info.offset.x;
-        const velocity = info.velocity.x;
-        if (Math.abs(offset) > SWIPE_THRESHOLD || Math.abs(velocity) > 500) {
-            if (offset > 0) onSwipeEnd("right");
-            else onSwipeEnd("left");
-        }
+    const handleLike = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (liking || passing) return;
+        setLiking(true);
+        onLike();
     };
 
-    const swipeOutVariants = {
-        exitRight: { x: 500, rotate: 25, opacity: 0, transition: { duration: 0.35 } },
-        exitLeft: { x: -500, rotate: -25, opacity: 0, transition: { duration: 0.35 } },
-        exitUp: { y: -500, scale: 0.8, opacity: 0, transition: { duration: 0.35 } },
+    const handlePass = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (liking || passing) return;
+        setPassing(true);
+        onPass();
     };
 
     return (
         <motion.div
-            className="swipe-card-fm"
-            drag={cardIndex === 0 ? "x" : false}
-            dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={0.9}
-            style={{ x, rotate, opacity }}
-            onDragEnd={handleDragEnd}
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{
-                x: 0,
-                y: 0,
-                rotate: 0,
-                opacity: 0,
-                scale: 0.85,
-                transition: { duration: 0.3 },
-            }}
-            layout
-            whileTap={{ cursor: "grabbing" }}
+            className={`discover-card ${liking ? "card-liking" : ""} ${passing ? "card-passing" : ""}`}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: index * 0.05 }}
+            whileHover={{ y: -4, transition: { duration: 0.2 } }}
+            onClick={onViewProfile}
         >
-            <div className="sc-photo-wrap" onClick={() => {
-                // Taps on left/right halves navigate photos
-            }}>
-                {/* Photo */}
-                {photos.length > 0 ? (
-                    <img src={photos[photoIdx]} alt={profile.firstName} className="sc-photo" loading="lazy" />
+            <div className="card-photo-wrap">
+                {!imgLoaded && <div className="card-photo-placeholder">{initials}</div>}
+                {photoUrl ? (
+                    <img
+                        src={photoUrl}
+                        alt={profile.firstName}
+                        className={`card-photo ${imgLoaded ? "loaded" : ""}`}
+                        loading="lazy"
+                        onLoad={() => setImgLoaded(true)}
+                        onError={() => setImgLoaded(false)}
+                    />
                 ) : (
-                    <div className="sc-photo-placeholder">{initials}</div>
+                    <div className="card-photo-placeholder">{initials}</div>
                 )}
 
-                {/* Photo tap zones */}
-                <div className="sc-photo-tap-left" onClick={(e) => { e.stopPropagation(); setPhotoIdx(i => Math.max(0, i - 1)); }} />
-                <div className="sc-photo-tap-right" onClick={(e) => { e.stopPropagation(); setPhotoIdx(i => Math.min(photos.length - 1, i + 1)); }} />
+                {/* Gradient overlay */}
+                <div className="card-gradient" />
 
-                {/* Photo progress bars */}
-                {photos.length > 1 && (
-                    <div className="sc-photo-progress">
-                        {photos.map((_, i) => (
-                            <span key={i} className={`sc-photo-bar ${i === photoIdx ? "active" : ""}`} />
-                        ))}
+                {/* Online badge */}
+                {isOnline && (
+                    <div className="card-online-badge">
+                        <span className="card-online-dot" />
+                        <span className="card-online-text">Online</span>
                     </div>
                 )}
 
-                {/* Swipe stamps */}
-                <motion.div className="sc-stamp stamp-like" style={{ opacity: likeOpacity }}>
-                    LIKE
-                </motion.div>
-                <motion.div className="sc-stamp stamp-nope" style={{ opacity: nopeOpacity }}>
-                    NOPE
-                </motion.div>
-
-                {/* Online badge top left */}
-                {isOnline && <span className="sc-online-badge">●</span>}
-
-                {/* More button top right */}
-                <button className="sc-more-btn" onClick={(e) => { e.stopPropagation(); onMore(); }} aria-label="More">
-                    ⋮
-                </button>
-
-                {/* Bottom info overlay */}
-                <div className="sc-overlay">
-                    <div className="sc-overlay-row">
-                        <div className="sc-overlay-left">
-                            <div className="sc-name-row">
-                                <h2 className="sc-name">{profile.firstName}, {profile.age ?? "?"}</h2>
-                                {profile.isVerified && (
-                                    <span className="sc-verified-badge" title="Verified">✓</span>
-                                )}
-                            </div>
-                            {profile.occupation && <p className="sc-occupation">{profile.occupation}</p>}
-                            <p className="sc-location">
-                                📍 {[profile.city, profile.country].filter(Boolean).join(", ")}
-                                {profile.distance && <span className="sc-distance"> · {profile.distance} km</span>}
-                            </p>
-                        </div>
-                        <button className="sc-info-btn" onClick={(e) => { e.stopPropagation(); onInfo(); }} aria-label="Info">
-                            ⓘ
-                        </button>
+                {/* Card info */}
+                <div className="card-info">
+                    <div className="card-name-row">
+                        <h3 className="card-name">
+                            {profile.firstName}
+                            {profile.age !== undefined && <span className="card-age">, {profile.age}</span>}
+                        </h3>
+                        {profile.isVerified && (
+                            <span className="card-verified" title="Verified">✓</span>
+                        )}
                     </div>
+                    {profile.city && (
+                        <p className="card-location">
+                            <span className="card-icon">📍</span>
+                            {profile.city}{profile.country ? `, ${profile.country}` : ""}
+                            {profile.distance && <span className="card-distance"> · {profile.distance} km</span>}
+                        </p>
+                    )}
+                    {profile.occupation && (
+                        <p className="card-occupation">
+                            <span className="card-icon">💼</span>
+                            {profile.occupation}
+                        </p>
+                    )}
                 </div>
             </div>
+
+            {/* Action buttons */}
+            <div className="card-actions">
+                <motion.button
+                    className="card-btn card-btn-pass"
+                    onClick={handlePass}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    disabled={liking || passing}
+                    aria-label="Pass"
+                >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </motion.button>
+                <motion.button
+                    className="card-btn card-btn-like"
+                    onClick={handleLike}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    disabled={liking || passing}
+                    aria-label="Like"
+                >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="0">
+                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                    </svg>
+                </motion.button>
+            </div>
         </motion.div>
-    );
-};
-
-// ─── Stacked Card Deck ─────────────────────────────────────────────────────────
-const SwipeStack = ({
-    profiles,
-    currentIndex,
-    onlineUsersSet,
-    onSwipeEnd,
-    onInfo,
-    onMore,
-}: {
-    profiles: Profile[];
-    currentIndex: number;
-    onlineUsersSet: Set<string>;
-    onSwipeEnd: (dir: "left" | "right" | "up") => void;
-    onInfo: (p: Profile) => void;
-    onMore: (p: Profile) => void;
-}) => {
-    // Show up to 3 cards stacked
-    const visibleProfiles = [];
-    for (let i = 0; i < 3; i++) {
-        const idx = currentIndex + i;
-        if (idx < profiles.length) {
-            visibleProfiles.push({ profile: profiles[idx], stackIndex: i });
-        }
-    }
-
-    if (visibleProfiles.length === 0) return null;
-
-    return (
-        <div className="swipe-stack-container">
-            {visibleProfiles.map(({ profile, stackIndex }) => {
-                // Determine the card type: center, left-behind, right-behind
-                let cardClass = "sc-stack-card sc-stack-center";
-                if (stackIndex === 1) cardClass = "sc-stack-card sc-stack-right";
-                else if (stackIndex === 2) cardClass = "sc-stack-card sc-stack-left";
-
-                if (stackIndex === 0) {
-                    // Active draggable card
-                    return (
-                        <AnimatePresence mode="popLayout" key={profile._id}>
-                            <ProfileCard
-                                profile={profile}
-                                isOnline={onlineUsersSet.has(profile._id) || profile.isOnline || false}
-                                onSwipeEnd={onSwipeEnd}
-                                onInfo={() => onInfo(profile)}
-                                onMore={() => onMore(profile)}
-                                index={0}
-                            />
-                        </AnimatePresence>
-                    );
-                }
-
-                // Stacked background cards - static
-                const isRight = stackIndex === 1;
-                return (
-                    <div
-                        key={profile._id}
-                        className={`sc-stack-card ${isRight ? "sc-stack-right" : "sc-stack-left"}`}
-                    >
-                        <div className="sc-stack-photo-wrap">
-                            {profile.profilePicture ? (
-                                <img src={profile.profilePicture} alt="" className="sc-stack-photo" loading="lazy" />
-                            ) : (
-                                <div className="sc-photo-placeholder">
-                                    {`${profile.firstName?.[0] ?? ""}${profile.lastName?.[0] ?? ""}`.toUpperCase()}
-                                </div>
-                            )}
-                            <div className="sc-stack-overlay">
-                                <span className="sc-stack-name">{profile.firstName}, {profile.age ?? "?"}</span>
-                            </div>
-                        </div>
-                    </div>
-                );
-            })}
-        </div>
     );
 };
 
@@ -453,8 +392,6 @@ const Discover = () => {
     const [loading, setLoading] = useState(true);
     const [actionLoading, setAL] = useState<string | null>(null);
     const [matchModal, setMatchModal] = useState<Profile | null>(null);
-    const [swiping, setSwiping] = useState(false);
-    const [index, setIndex] = useState(0);
     const [showFilters, setShowFilters] = useState(false);
     const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
     const [activeFilters, setActiveFilters] = useState<FilterState>(DEFAULT_FILTERS);
@@ -462,7 +399,8 @@ const Discover = () => {
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
-    const [history, setHistory] = useState<Profile[]>([]);
+    const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+    const sentinelRef = useRef<HTMLDivElement>(null);
 
     // Active filter count
     const activeFilterCount = Object.entries(activeFilters).filter(([k, v]) => {
@@ -493,8 +431,6 @@ const Discover = () => {
                 setProfiles(prev => [...prev, ...users]);
             } else {
                 setProfiles(users);
-                setIndex(0);
-                setHistory([]);
             }
             setHasMore(users.length >= 20 && res.pagination?.page < res.pagination?.pages);
         } catch {
@@ -510,80 +446,70 @@ const Discover = () => {
         loadProfiles(1);
     }, [loadProfiles]);
 
+    // Infinite scroll
+    useEffect(() => {
+        if (!sentinelRef.current || !hasMore || loadingMore) return;
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting && hasMore && !loadingMore) {
+                    const nextPage = page + 1;
+                    setPage(nextPage);
+                    loadProfiles(nextPage, true);
+                }
+            },
+            { threshold: 0.1 }
+        );
+        observer.observe(sentinelRef.current);
+        return () => observer.disconnect();
+    }, [hasMore, loadingMore, page, loadProfiles]);
+
     const applyFilters = () => {
         setActiveFilters({ ...filters });
         setShowFilters(false);
     };
 
-    const current = profiles[index];
-
-    const doAction = async (dir: "right" | "left" | "up", action: () => Promise<any>) => {
-        if (!current || actionLoading || swiping) return;
-        setAL(dir);
-        setSwiping(true);
-        let errorMsg: string | null = null;
+    const handleLike = async (profile: Profile) => {
+        if (actionLoading) return;
+        setAL("like");
         try {
-            const res = await action();
+            const res = await matchAPI.likeUser(profile._id);
             if (res?.isMatch) {
-                setMatchModal(current);
+                setMatchModal(profile);
                 toast("💕 It's a Match!", {
                     duration: 3000,
                     style: { background: "#ff4081", color: "#fff" },
                 });
             }
+            // Remove from grid
+            setProfiles(prev => prev.filter(p => p._id !== profile._id));
         } catch (err: any) {
-            errorMsg = err?.message || "Something went wrong";
-            console.error("[Swipe error]", err);
-        }
-        setTimeout(() => {
-            setAL(null);
-            setSwiping(false);
-            if (!errorMsg) {
-                setHistory(prev => [current, ...prev]);
-                setIndex(i => i + 1);
-                if (index >= profiles.length - 3 && hasMore && !loadingMore) {
-                    const nextPage = page + 1;
-                    setPage(nextPage);
-                    loadProfiles(nextPage, true);
-                }
+            const msg = err?.message || "Something went wrong";
+            if (msg.toLowerCase().includes("limit") || msg.toLowerCase().includes("429")) {
+                toast("❤️ Daily like limit reached. Upgrade to Premium for unlimited likes!", {
+                    duration: 5000,
+                    style: { background: "#ff4081", color: "#fff" },
+                });
             } else {
-                if (errorMsg!.toLowerCase().includes("limit") || errorMsg!.toLowerCase().includes("429")) {
-                    toast("❤️ Daily like limit reached. Upgrade to Premium for unlimited likes!", {
-                        duration: 5000,
-                        style: { background: "#ff4081", color: "#fff" },
-                    });
-                } else {
-                    toast.error(errorMsg!);
-                }
+                toast.error(msg);
             }
-        }, 400);
+        } finally {
+            setAL(null);
+        }
     };
 
-    const handleSwipeEnd = (dir: "left" | "right" | "up") => {
-        if (dir === "right") doAction("right", () => matchAPI.likeUser(current!._id));
-        else if (dir === "left") doAction("left", () => matchAPI.passUser(current!._id));
-        else if (dir === "up") doAction("up", () => matchAPI.superLikeUser(current!._id));
+    const handlePass = async (profile: Profile) => {
+        if (actionLoading) return;
+        setAL("pass");
+        try {
+            await matchAPI.passUser(profile._id);
+            // Remove from grid
+            setProfiles(prev => prev.filter(p => p._id !== profile._id));
+        } catch (err: any) {
+            toast.error(err?.message || "Something went wrong");
+        } finally {
+            setAL(null);
+        }
     };
-
-    const handleUndo = () => {
-        if (history.length === 0) return;
-        const last = history[0];
-        setHistory(prev => prev.slice(1));
-        setProfiles(prev => [last, ...prev]);
-        setIndex(i => Math.max(0, i - 1));
-    };
-
-    // Keyboard support
-    useEffect(() => {
-        const handler = (e: KeyboardEvent) => {
-            if (!current || actionLoading || swiping) return;
-            if (e.key === "ArrowRight") handleSwipeEnd("right");
-            if (e.key === "ArrowLeft") handleSwipeEnd("left");
-            if (e.key === "ArrowUp") handleSwipeEnd("up");
-        };
-        window.addEventListener("keydown", handler);
-        return () => window.removeEventListener("keydown", handler);
-    }, [current, actionLoading, swiping]);
 
     return (
         <div className="page-wrapper">
@@ -592,18 +518,60 @@ const Discover = () => {
             <div className="discover-page">
                 {/* Header */}
                 <div className="discover-header">
-                    <h1>Discover</h1>
-                    <div className="discover-header-actions">
-                        {activeFilterCount > 0 && (
-                            <span className="active-filter-count">{activeFilterCount}</span>
-                        )}
-                        <button className={`filter-toggle-btn ${showFilters ? "active" : ""}`}
-                            onClick={() => setShowFilters(true)}>
-                            🔍 Filters
+                    <div className="discover-header-left">
+                        <h1 className="discover-title">Discover</h1>
+                        <p className="discover-subtitle">People near you</p>
+                        <p className="discover-description">Find and connect with amazing people</p>
+                    </div>
+                    <div className="discover-header-right">
+                        <button
+                            className={`discover-filter-btn ${showFilters ? "active" : ""}`}
+                            onClick={() => setShowFilters(true)}
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <line x1="4" y1="21" x2="4" y2="14" />
+                                <line x1="4" y1="10" x2="4" y2="3" />
+                                <line x1="12" y1="21" x2="12" y2="12" />
+                                <line x1="12" y1="8" x2="12" y2="3" />
+                                <line x1="20" y1="21" x2="20" y2="16" />
+                                <line x1="20" y1="12" x2="20" y2="3" />
+                                <line x1="1" y1="14" x2="7" y2="14" />
+                                <line x1="9" y1="8" x2="15" y2="8" />
+                                <line x1="17" y1="16" x2="23" y2="16" />
+                            </svg>
+                            Filters
+                            {activeFilterCount > 0 && (
+                                <span className="filter-count-badge">{activeFilterCount}</span>
+                            )}
                         </button>
-                        <button className="refresh-btn" onClick={() => { setPage(1); loadProfiles(1); }} disabled={loading}>
-                            🔄
-                        </button>
+                        <div className="discover-view-toggle">
+                            <button
+                                className={`view-toggle-btn ${viewMode === "grid" ? "active" : ""}`}
+                                onClick={() => setViewMode("grid")}
+                                aria-label="Grid view"
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <rect x="3" y="3" width="7" height="7" />
+                                    <rect x="14" y="3" width="7" height="7" />
+                                    <rect x="3" y="14" width="7" height="7" />
+                                    <rect x="14" y="14" width="7" height="7" />
+                                </svg>
+                            </button>
+                            <button
+                                className={`view-toggle-btn ${viewMode === "list" ? "active" : ""}`}
+                                onClick={() => setViewMode("list")}
+                                aria-label="List view"
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="8" y1="6" x2="21" y2="6" />
+                                    <line x1="8" y1="12" x2="21" y2="12" />
+                                    <line x1="8" y1="18" x2="21" y2="18" />
+                                    <line x1="3" y1="6" x2="3.01" y2="6" />
+                                    <line x1="3" y1="12" x2="3.01" y2="12" />
+                                    <line x1="3" y1="18" x2="3.01" y2="18" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -653,15 +621,21 @@ const Discover = () => {
                     </div>
                 )}
 
-                {/* Main card area */}
+                {/* Profile Grid */}
                 <div className="discover-main">
                     {loading ? (
-                        <div className="discover-loading">
-                            <div className="discover-spinner" />
-                            <p>Finding people for you…</p>
+                        <div className="discover-grid">
+                            {Array.from({ length: 8 }).map((_, i) => (
+                                <ProfileCardSkeleton key={i} />
+                            ))}
                         </div>
-                    ) : !current ? (
-                        <div className="empty-state discover-empty">
+                    ) : profiles.length === 0 ? (
+                        <motion.div
+                            className="empty-state discover-empty"
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.5 }}
+                        >
                             <div className="empty-icon">💫</div>
                             <h3>You've seen everyone!</h3>
                             <p>
@@ -685,42 +659,91 @@ const Discover = () => {
                                     Edit Preferences
                                 </button>
                             </div>
-                        </div>
+                        </motion.div>
                     ) : (
                         <>
-                            <SwipeStack
-                                profiles={profiles}
-                                currentIndex={index}
-                                onlineUsersSet={onlineUsers}
-                                onSwipeEnd={handleSwipeEnd}
-                                onInfo={(p) => navigate(`/profile/${p._id}`)}
-                                onMore={(p) => navigate(`/profile/${p._id}`)}
-                            />
-
-                            {/* Action buttons */}
-                            <div className="swipe-actions-bar">
-                                <button className="sa-btn sa-undo" onClick={handleUndo} disabled={history.length === 0} title="Undo" aria-label="Undo">
-                                    ↺
-                                </button>
-                                <button className="sa-btn sa-pass" onClick={() => handleSwipeEnd("left")} disabled={!!actionLoading || swiping} title="Pass" aria-label="Pass">
-                                    ✕
-                                </button>
-                                <button className="sa-btn sa-like" onClick={() => handleSwipeEnd("right")} disabled={!!actionLoading || swiping} title="Like" aria-label="Like">
-                                    ❤
-                                </button>
-                                <button className="sa-btn sa-super" onClick={() => handleSwipeEnd("up")} disabled={!!actionLoading || swiping} title="Super Like" aria-label="Super Like">
-                                    ⭐
-                                </button>
-                                <button className="sa-btn sa-boost" title="Boost" aria-label="Boost">
-                                    ⚡
-                                </button>
+                            <div className={`discover-grid ${viewMode === "list" ? "discover-list" : ""}`}>
+                                <AnimatePresence mode="popLayout">
+                                    {profiles.map((profile, i) => (
+                                        <ProfileCard
+                                            key={profile._id}
+                                            profile={profile}
+                                            isOnline={onlineUsers.has(profile._id) || profile.isOnline || false}
+                                            onLike={() => handleLike(profile)}
+                                            onPass={() => handlePass(profile)}
+                                            onViewProfile={() => navigate(`/profile/${profile._id}`)}
+                                            index={i}
+                                        />
+                                    ))}
+                                </AnimatePresence>
                             </div>
 
-                            {/* Load more indicator */}
+                            {/* Infinite scroll sentinel */}
+                            <div ref={sentinelRef} className="scroll-sentinel" />
+
+                            {/* Load more */}
                             {loadingMore && (
                                 <div className="discover-loading-more">
-                                    <div className="discover-spinner" style={{ width: 20, height: 20 }} />
+                                    <div className="discover-grid mini-grid">
+                                        {Array.from({ length: 4 }).map((_, i) => (
+                                            <ProfileCardSkeleton key={i} />
+                                        ))}
+                                    </div>
                                 </div>
+                            )}
+
+                            {/* Find More People CTA */}
+                            {profiles.length > 0 && (
+                                <motion.div
+                                    className="find-more-section"
+                                    initial={{ opacity: 0, y: 30 }}
+                                    whileInView={{ opacity: 1, y: 0 }}
+                                    viewport={{ once: true }}
+                                    transition={{ duration: 0.5 }}
+                                >
+                                    <div className="find-more-content">
+                                        <div className="find-more-left">
+                                            <div className="find-more-icon">💕</div>
+                                            <div className="find-more-text">
+                                                <h3>Find more people</h3>
+                                                <p>Keep swiping to discover more amazing people.</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            className="find-more-btn"
+                                            onClick={() => { setPage(1); loadProfiles(1); }}
+                                        >
+                                            Discover People
+                                        </button>
+                                    </div>
+                                </motion.div>
+                            )}
+
+                            {/* Tips Card */}
+                            {profiles.length > 0 && (
+                                <motion.div
+                                    className="tips-section"
+                                    initial={{ opacity: 0, y: 30 }}
+                                    whileInView={{ opacity: 1, y: 0 }}
+                                    viewport={{ once: true }}
+                                    transition={{ duration: 0.5, delay: 0.1 }}
+                                >
+                                    <div className="tips-content">
+                                        <div className="tips-left">
+                                            <div className="tips-icon">💡</div>
+                                            <div className="tips-text">
+                                                <h3>Tips for better matches</h3>
+                                                <p>Complete your profile, add more photos and be yourself to get better matches.</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            className="tips-btn"
+                                            onClick={() => navigate("/profile/edit")}
+                                        >
+                                            Update Profile
+                                        </button>
+                                    </div>
+                                </motion.div>
                             )}
                         </>
                     )}

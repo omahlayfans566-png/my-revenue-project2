@@ -4,7 +4,6 @@ import AppNavbar from "../component/AppNavbar";
 import { matchAPI } from "../services/apiService";
 import { useAuth } from "../context/AuthContext";
 import { usePremium } from "../services/premiumService";
-import PremiumBadge from "../component/PremiumBadge";
 import "../style/matches.css";
 import { useSocket } from "../context/SocketContext";
 
@@ -25,6 +24,54 @@ interface MatchItem {
     lastMessageAt?: string;
     messagesSent?: number;
 }
+
+// SVG Icons as inline components
+const ChatIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+);
+
+const MoreIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+        <circle cx="12" cy="5" r="2" />
+        <circle cx="12" cy="12" r="2" />
+        <circle cx="12" cy="19" r="2" />
+    </svg>
+);
+
+const LocationIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+        <circle cx="12" cy="10" r="3" />
+    </svg>
+);
+
+const VerifiedIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2z" />
+        <path d="M9 12l2 2 4-4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </svg>
+);
+
+const LockIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+        <path d="M7 11V7a5 5 0 0 1 10 0v4" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+);
+
+const CrownIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
+        <path d="M2 19h20v3H2v-3zM3.3 8.5l5.7 4.5L12 5l3 8 5.7-4.5L22 16H2l1.3-7.5z" />
+    </svg>
+);
+
+const HeartIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+    </svg>
+);
 
 const Matches = () => {
     const navigate = useNavigate();
@@ -95,13 +142,139 @@ const Matches = () => {
     const initials = (u: MatchUser) =>
         `${u.firstName?.[0] ?? ""}${u.lastName?.[0] ?? ""}`.toUpperCase();
 
+    // Renders a match card in the new horizontal layout
+    const renderMatchCard = (m: MatchItem) => {
+        const u = m.user;
+        return (
+            <div key={m._id} className="match-card" onClick={() => navigate(`/chat/${u._id}`)}>
+                {/* Avatar */}
+                <div className="match-card-avatar">
+                    {u.profilePicture ? (
+                        <img src={u.profilePicture} alt={u.firstName} />
+                    ) : (
+                        <div className="avatar-placeholder">{initials(u)}</div>
+                    )}
+                    <div className="online-indicator" />
+                </div>
+
+                {/* Info */}
+                <div className="match-card-info">
+                    <div className="match-card-name-row">
+                        <h3>{u.firstName}, {u.age ?? ""}</h3>
+                        <span className="verified-badge">
+                            <VerifiedIcon />
+                        </span>
+                    </div>
+                    <div className="match-card-location">
+                        <LocationIcon />
+                        <span>
+                            {u.city ?? ""}{u.city && u.country ? ", " : ""}{u.country ?? ""}
+                        </span>
+                    </div>
+                    {u.occupation && <p className="match-card-occupation">{u.occupation}</p>}
+                </div>
+
+                {/* Actions */}
+                <div className="match-card-actions">
+                    <button
+                        className="match-action-btn chat"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/chat/${u._id}`); }}
+                        title="Chat"
+                    >
+                        <ChatIcon />
+                    </button>
+                    <button
+                        className="match-action-btn more"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            // Show context menu with unmatch/block options
+                            const opt = window.confirm("Unmatch this user?");
+                            if (opt) handleUnmatch(m._id, u._id);
+                        }}
+                        title="More"
+                    >
+                        <MoreIcon />
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
+    // Renders a locked likes card (non-premium users)
+    const renderLockedLikeCard = (l: any) => (
+        <div key={l._id} className="likes-card">
+            <div className="like-avatar-wrapper">
+                {l.from?.profilePicture ? (
+                    <img src={l.from.profilePicture} alt="?" />
+                ) : (
+                    <div className="like-avatar-placeholder">?</div>
+                )}
+                <div className="lock-overlay">
+                    <LockIcon />
+                </div>
+            </div>
+            <div className="like-card-info">
+                <h3>Someone new</h3>
+                <p className="like-location">
+                    <LocationIcon />
+                    <span>{l.from?.city || "Unknown location"}</span>
+                </p>
+                <p className="like-recent">Liked you recently</p>
+            </div>
+            <div className="like-card-actions">
+                <button
+                    className="btn-unlock"
+                    onClick={() => navigate("/premium")}
+                >
+                    <CrownIcon />
+                    Unlock
+                </button>
+            </div>
+        </div>
+    );
+
+    // Renders an unlocked likes card (premium users)
+    const renderUnlockedLikeCard = (l: any) => {
+        const from = l.from;
+        const li = `${from?.firstName?.[0] ?? ""}${from?.lastName?.[0] ?? ""}`.toUpperCase();
+        return (
+            <div key={l._id} className="likes-card unlocked" onClick={() => navigate(`/profile/${from._id}`)}>
+                <div className="like-avatar-wrapper">
+                    {from?.profilePicture ? (
+                        <img src={from.profilePicture} alt={from.firstName} />
+                    ) : (
+                        <div className="like-avatar-placeholder">{li || "?"}</div>
+                    )}
+                </div>
+                <div className="like-card-info">
+                    <h3>{from?.firstName || "Someone"}, {from?.age ?? ""}</h3>
+                    <p className="like-location">
+                        <LocationIcon />
+                        <span>{from?.city ?? ""}{from?.city && from?.country ? ", " : ""}{from?.country ?? ""}</span>
+                    </p>
+                    {l.isSuperLike && <p className="like-recent">⭐ Super Like</p>}
+                </div>
+                <div className="like-card-actions">
+                    <button
+                        className="btn-unlock"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/chat/${from._id}`); }}
+                    >
+                        <ChatIcon />
+                        Say Hi
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className="page-wrapper">
             <AppNavbar />
             <div className="matches-page">
+                {/* Header */}
                 <div className="matches-header">
-                    <h1>Your Matches</h1>
-                    <p>People who liked you back ❤️</p>
+                    <h1>{tab === "matches" ? "Your Matches" : "Likes Received"}</h1>
+                    <p>{tab === "matches" ? "People you matched with ❤️" : "People who liked you ❤️"}</p>
                 </div>
 
                 {/* Tabs */}
@@ -120,9 +293,10 @@ const Matches = () => {
                     </button>
                 </div>
 
+                {/* Content */}
                 {loading ? (
                     <div className="matches-loading">
-                        <div className="discover-spinner" />
+                        <div className="spinner" />
                     </div>
                 ) : tab === "matches" ? (
                     matches.length === 0 ? (
@@ -130,53 +304,28 @@ const Matches = () => {
                             <div className="empty-icon">💞</div>
                             <h3>No matches yet</h3>
                             <p>Keep swiping to find your match!</p>
-                            <button className="btn btn-primary" onClick={() => navigate("/discover")} style={{ marginTop: 16 }}>
+                            <button className="btn" onClick={() => navigate("/discover")}>
                                 Start Swiping
                             </button>
                         </div>
                     ) : (
-                        <div className="matches-grid">
-                            {matches.map((m) => (
-                                <div key={m._id} className="match-card" onClick={() => navigate(`/chat/${m.user._id}`)}>
-                                    <div className="match-card-photo">
-                                        {m.user.profilePicture ? (
-                                            <img src={m.user.profilePicture} alt={m.user.firstName} />
-                                        ) : (
-                                            <div className="match-card-placeholder">{initials(m.user)}</div>
-                                        )}
-                                        <div className="match-card-badge">💞</div>
-                                    </div>
-                                    <div className="match-card-info">
-                                        <h3>{m.user.firstName}, {m.user.age ?? "?"}</h3>
-                                        <p className="match-card-location">
-                                            {m.user.city ?? ""}{m.user.city && m.user.country ? ", " : ""}{m.user.country ?? ""}
-                                        </p>
-                                        {m.user.occupation && <p className="match-card-occupation">{m.user.occupation}</p>}
-                                    </div>
-                                    <div className="match-card-actions">
-                                        <button className="match-action-btn msg" onClick={(e) => { e.stopPropagation(); navigate(`/chat/${m.user._id}`); }}>
-                                            💬 Chat
-                                        </button>
-                                        <button className="match-action-btn view" onClick={(e) => { e.stopPropagation(); navigate(`/profile/${m.user._id}`); }}>
-                                            👤 Profile
-                                        </button>
-                                        <button
-                                            className="match-action-btn unmatch"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleUnmatch(m._id, m.user._id);
-                                            }}
-                                            disabled={actionLoading === m._id}
-                                            title="Unmatch"
-                                        >
-                                            {actionLoading === m._id ? "..." : "✕"}
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+                        <>
+                            <div className="matches-grid">
+                                {matches.map(renderMatchCard)}
+                            </div>
+                            {/* Bottom CTA Card */}
+                            <div className="bottom-cta-card">
+                                <div className="cta-icon">💕</div>
+                                <h3>Find more people</h3>
+                                <p>Keep swiping to discover more amazing people.</p>
+                                <button className="btn-discover" onClick={() => navigate("/discover")}>
+                                    Discover People
+                                </button>
+                            </div>
+                        </>
                     )
                 ) : (
+                    /* Likes Received Tab */
                     likes.length === 0 ? (
                         <div className="empty-state">
                             <div className="empty-icon">💝</div>
@@ -186,76 +335,34 @@ const Matches = () => {
                             ) : (
                                 <p>Upgrade to Premium to see who likes you!</p>
                             )}
-                            <button className="btn btn-primary" onClick={() => navigate(isPremium ? "/discover" : "/premium")} style={{ marginTop: 16 }}>
+                            <button className="btn" onClick={() => navigate(isPremium ? "/discover" : "/premium")}>
                                 {isPremium ? "Start Swiping" : "✨ Go Premium"}
                             </button>
                         </div>
-                    ) : isPremium ? (
-                        <div className="matches-grid">
-                            {likes.map((l) => {
-                                const from = l.from;
-                                const li = `${from?.firstName?.[0] ?? ""}${from?.lastName?.[0] ?? ""}`.toUpperCase();
-                                return (
-                                    <div key={l._id} className="match-card likes-card" onClick={() => navigate(`/profile/${from._id}`)}>
-                                        <div className="match-card-photo">
-                                            {from?.profilePicture ? (
-                                                <img src={from.profilePicture} alt={from.firstName} />
-                                            ) : (
-                                                <div className="match-card-placeholder">{li || "?"}</div>
-                                            )}
-                                            {l.isSuperLike && <div className="match-card-badge superlike">⭐ Super Like</div>}
-                                        </div>
-                                        <div className="match-card-info">
-                                            <h3>{from?.firstName || "Someone"}, {from?.age ?? "?"}</h3>
-                                            <p className="match-card-location">
-                                                {from?.city ?? ""}{from?.city && from?.country ? ", " : ""}{from?.country ?? ""}
-                                            </p>
-                                            {from?.occupation && <p className="match-card-occupation">{from.occupation}</p>}
-                                        </div>
-                                        <div className="match-card-actions">
-                                            <button className="match-action-btn msg" onClick={(e) => { e.stopPropagation(); navigate(`/chat/${from._id}`); }}>
-                                                💬 Say Hi
-                                            </button>
-                                            <button className="match-action-btn view" onClick={(e) => { e.stopPropagation(); navigate(`/profile/${from._id}`); }}>
-                                                👤 View
-                                            </button>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
                     ) : (
-                        <div className="matches-grid">
-                            {likes.map((l) => (
-                                <div key={l._id} className="match-card likes-card">
-                                    <div className="match-card-photo blurred">
-                                        {l.from?.profilePicture ? (
-                                            <img src={l.from.profilePicture} alt="?" className="blurred-img" />
-                                        ) : (
-                                            <div className="match-card-placeholder">?</div>
-                                        )}
-                                        <div className="match-blur-overlay">
-                                            <span>❤️</span>
-                                            <p>Unlock to see</p>
-                                        </div>
-                                    </div>
-                                    <div className="match-card-info">
-                                        <h3>Someone likes you!</h3>
-                                        <p className="match-card-location">Upgrade to reveal</p>
-                                    </div>
-                                </div>
-                            ))}
-                            <div className="match-card premium-upsell-card" onClick={() => navigate("/premium")}>
-                                <div className="match-card-photo premium-upsell-photo">
-                                    <div className="premium-upsell-content">
-                                        <span>✨</span>
-                                        <h3>See Who Likes You</h3>
-                                        <p>Upgrade to Premium to see everyone who liked your profile and match instantly!</p>
-                                        <button className="btn btn-primary btn-sm">Go Premium</button>
-                                    </div>
-                                </div>
+                        <>
+                            <div className="matches-grid">
+                                {isPremium
+                                    ? likes.map(renderUnlockedLikeCard)
+                                    : likes.map(renderLockedLikeCard)
+                                }
                             </div>
-                        </div>
+                            {!isPremium && (
+                                <div className="premium-upsell">
+                                    <div className="crown-icon">👑</div>
+                                    <h3>Upgrade to Premium</h3>
+                                    <p>See who likes you and match with your perfect someone.</p>
+                                    <button className="btn-upgrade" onClick={() => navigate("/premium")}>
+                                        Upgrade Now
+                                    </button>
+                                    <div className="premium-features">
+                                        <span><HeartIcon /> See Who Likes You</span>
+                                        <span><HeartIcon /> Unlimited Likes</span>
+                                        <span><HeartIcon /> Priority Matching</span>
+                                    </div>
+                                </div>
+                            )}
+                        </>
                     )
                 )}
             </div>
