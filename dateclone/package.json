@@ -5,8 +5,8 @@
   "type": "module",
 
   "engines": {
-  "node": "22.x"
-},
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

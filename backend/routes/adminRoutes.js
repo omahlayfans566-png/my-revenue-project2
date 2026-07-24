@@ -6,6 +6,7 @@ import { AdminLog } from "../models/AdminLog.js";
 import { Announcement } from "../models/Announcement.js";
 import { Payment } from "../models/Payment.js";
 import { Message } from "../models/Message.js";
+import { Match } from "../models/Match.js";
 import { Notification } from "../models/Notification.js";
 import { authenticateToken } from "../middleware/auth.js";
 import { loadUser, authorize } from "../middleware/rbac.js";
@@ -95,8 +96,8 @@ router.get("/dashboard", authorize("moderator", "admin", "super_admin"), async (
             User.countDocuments({ isBanned: true }),
             User.countDocuments({ isPremium: true }),
             Report.countDocuments({ status: "pending" }),
-            mongoose.model("Match")?.countDocuments?.() || 0,
-            mongoose.model("Message")?.countDocuments?.() || 0,
+            Match.countDocuments(),
+            Message.countDocuments(),
             global.onlineUsers?.size || 0,
         ]);
 

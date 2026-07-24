@@ -1442,7 +1442,7 @@ router.get("/me", authenticateToken, async (req, res) => {
                 .json({ success: false, message: "User not found." });
         }
 
-        return res.json({ success: true, user });
+        return res.json({ success: true, user: publicUser(user) });
     } catch (err) {
         console.error("[Me]", err);
         return res

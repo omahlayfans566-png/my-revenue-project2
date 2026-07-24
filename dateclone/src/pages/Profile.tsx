@@ -7,6 +7,14 @@ import Skeleton from "../component/Skeleton";
 import { profileAPI } from "../services/apiService";
 import "../style/profile.css";
 
+// ─── Types ──────────────────────────────────────────────────────────────────
+interface DetailField {
+  key: string;
+  label: string;
+  icon: string;
+  format?: (v: any, u?: any) => string;
+}
+
 // ─── Constants ──────────────────────────────────────────────────────────────
 const PRIMARY = "#FF2E79";
 const GOLD_GRADIENT = "linear-gradient(135deg, #f57f17, #fbc02d)";
@@ -63,22 +71,22 @@ const formatDate = (dateStr?: string): string => {
   });
 };
 
-const DETAIL_FIELDS = [
-  { key: "age", label: "Age", icon: "🎂", format: (v: number) => `${v} years old` },
-  { key: "dateOfBirth", label: "Birthday", icon: "🎈", format: (v: string) => formatDate(v) },
-  { key: "gender", label: "Gender", icon: "⚤", format: (v: string) => v.replace("_", " ") },
-  { key: "city", label: "Location", icon: "📍", format: (v: string, u: any) => [v, u.country].filter(Boolean).join(", ") },
+const DETAIL_FIELDS: DetailField[] = [
+  { key: "age", label: "Age", icon: "🎂", format: (v: any) => `${v} years old` },
+  { key: "dateOfBirth", label: "Birthday", icon: "🎈", format: (v: any) => formatDate(v) },
+  { key: "gender", label: "Gender", icon: "⚤", format: (v: any) => (v as string).replace("_", " ") },
+  { key: "city", label: "Location", icon: "📍", format: (v: any, u: any) => [v as string, u?.country].filter(Boolean).join(", ") },
   { key: "occupation", label: "Occupation", icon: "💼" },
-  { key: "education", label: "Education", icon: "🎓", format: (v: string) => v.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()) },
+  { key: "education", label: "Education", icon: "🎓", format: (v: any) => (v as string).replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()) },
   { key: "religion", label: "Religion", icon: "🙏" },
   { key: "relationshipGoal", label: "Relationship Goal", icon: "💞" },
-  { key: "height", label: "Height", icon: "📏", format: (v: number) => `${v} cm` },
-  { key: "languages", label: "Languages", icon: "🗣️", format: (v: string[]) => v.join(", ") },
-  { key: "smoking", label: "Smoking", icon: "🚬", format: (v: string) => v.charAt(0).toUpperCase() + v.slice(1) },
-  { key: "drinking", label: "Drinking", icon: "🍷", format: (v: string) => v.charAt(0).toUpperCase() + v.slice(1) },
-  { key: "hasChildren", label: "Children", icon: "👶", format: (v: string) => v.replace(/_/g, " ") },
-  { key: "lookingFor", label: "Looking For", icon: "💕", format: (v: string) => v.charAt(0).toUpperCase() + v.slice(1) },
-  { key: "zodiacSign", label: "Zodiac", icon: "♈", format: (v: string) => v.charAt(0).toUpperCase() + v.slice(1) },
+  { key: "height", label: "Height", icon: "📏", format: (v: any) => `${v} cm` },
+  { key: "languages", label: "Languages", icon: "🗣️", format: (v: any) => (v as string[]).join(", ") },
+  { key: "smoking", label: "Smoking", icon: "🚬", format: (v: any) => (v as string).charAt(0).toUpperCase() + (v as string).slice(1) },
+  { key: "drinking", label: "Drinking", icon: "🍷", format: (v: any) => (v as string).charAt(0).toUpperCase() + (v as string).slice(1) },
+  { key: "hasChildren", label: "Children", icon: "👶", format: (v: any) => (v as string).replace(/_/g, " ") },
+  { key: "lookingFor", label: "Looking For", icon: "💕", format: (v: any) => (v as string).charAt(0).toUpperCase() + (v as string).slice(1) },
+  { key: "zodiacSign", label: "Zodiac", icon: "♈", format: (v: any) => (v as string).charAt(0).toUpperCase() + (v as string).slice(1) },
 ];
 
 // ─── Photo Viewer Modal ─────────────────────────────────────────────────────

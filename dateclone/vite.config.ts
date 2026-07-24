@@ -92,16 +92,10 @@ export default defineConfig({
   ],
   build: {
     target: 'es2020',
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true,
-        drop_debugger: true,
-      },
-    },
+    minify: 'esbuild',
     rollupOptions: {
       output: {
-        manualChunks(id: string) {
+        manualChunks(id) {
           if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/')) return 'vendor';
           if (id.includes('node_modules/socket.io-client')) return 'socket';
           if (id.includes('node_modules/framer-motion')) return 'animations';
