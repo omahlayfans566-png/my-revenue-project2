@@ -1,7 +1,20 @@
 {
+  "name": "dateclone-monorepo",
+  "private": true,
+  "engines": {
+    "node": ">=20.0.0 <23.0.0"
+  },
   "scripts": {
     "dev": "cd dateclone && npx vite --port 5174",
+    "dev:backend": "cd backend && node server.js",
+    "dev:all": "concurrently \"cd backend && nodemon server.js\" \"cd dateclone && npx vite --port 5174\"",
     "build": "cd dateclone && npx vite build",
-    "preview": "cd dateclone && npx vite preview"
+    "preview": "cd dateclone && npx vite preview",
+    "start": "cd backend && node server.js",
+    "install:all": "cd backend && npm install && cd ../dateclone && npm install",
+    "test": "cd backend && npm test"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3"
   }
 }

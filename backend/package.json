@@ -5,7 +5,7 @@
     "main": "server.js",
     "type": "module",
     "engines": {
-        "node": ">=18.0.0"
+        "node": ">=20.0.0 <23.0.0"
     },
     "scripts": {
         "start": "node server.js",
@@ -40,6 +40,7 @@
     "dependencies": {
         "bcryptjs": "^2.4.3",
         "cloudinary": "^1.40.0",
+        "compression": "^1.7.5",
         "cors": "^2.8.5",
         "dotenv": "^16.3.1",
         "express": "^4.18.2",
