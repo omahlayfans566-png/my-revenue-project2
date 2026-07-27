@@ -93,7 +93,7 @@ const scheduleFlush = () => {
     }
 };
 
-const queueActivityLog = (userId, action, details = "", req = null) => {
+const logActivity = (userId, action, details = "", req = null) => {
     activityBatch.push({
         userId,
         action,
@@ -104,7 +104,7 @@ const queueActivityLog = (userId, action, details = "", req = null) => {
     scheduleFlush();
 };
 
-const queueLoginHistory = (userId, success, req, failReason = "", method = "password", sessionId = "") => {
+const logLoginHistory = (userId, success, req, failReason = "", method = "password", sessionId = "") => {
     loginHistoryBatch.push({
         userId,
         success,
@@ -710,7 +710,27 @@ router.post(
                 user: publicUser(user),
             });
         } catch (err) {
+            // Differentiate between error types for clearer user messages
+            const isDbError =
+                err?.name === "MongoError" ||
+                err?.name === "MongoServerError" ||
+                err?.message?.includes("ECONNREFUSED") ||
+                err?.message?.includes("ENOTFOUND") ||
+                err?.message?.includes("connection") ||
+                err?.message?.includes("timeout") ||
+                err?.name === "MongooseError" ||
+                err?.name === "DisconnectedError";
+            
+            const isBcryptError = err?.message?.includes("bcrypt") || err?.name === "BcryptError";
+            
             console.error("[Login]", err);
+            
+            if (isDbError) {
+                return res
+                    .status(503)
+                    .json({ success: false, message: "Server unavailable. Please try again later." });
+            }
+            
             return res
                 .status(500)
                 .json({ success: false, message: "Login failed. Please try again." });

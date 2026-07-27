@@ -8,43 +8,69 @@ import "../style/auth.css";
 const classify = (msg: string): { type: string; text: string } => {
   const m = msg.toLowerCase();
 
+  // Network / server unreachable
   if (
     m.includes("cannot reach") ||
     m.includes("failed to fetch") ||
     m.includes("networkerror") ||
     m.includes("load failed") ||
     m.includes("not running") ||
-    m.includes("502") ||
-    m.includes("backend server is not running")
+    m.includes("backend server is not running") ||
+    m.includes("fetch failed") ||
+    m.includes("network request failed") ||
+    m.includes("typeerror")
   ) {
     return {
       type: "network",
       text: "Backend server is not running. Open a terminal in the /backend folder and run: npm run dev",
     };
   }
-  if (m.includes("database not connected") || m.includes("port 27017") || m.includes("503")) {
-    return { type: "database", text: "Database connection issue. MongoDB is disconnected; try again shortly." };
+
+  // Database / server unavailable
+  if (m.includes("server unavailable") || m.includes("database not connected") || m.includes("port 27017") || m.includes("503") || m.includes("temporarily unavailable")) {
+    return { type: "database", text: "Server unavailable. Please try again later." };
   }
-  if (m.includes("verify your email") || m.includes("verify your email before")) {
-    return { type: "unverified", text: "Please verify your email before logging in." };
+
+  // No account found
+  if (m.includes("no account found") || m.includes("no account found with that email") || m.includes("no account found with that email.")) {
+    return { type: "credentials", text: "No account found with this email." };
   }
-  if (m.includes("invalid email or password") || m.includes("incorrect") || m.includes("401")) {
-    return { type: "credentials", text: "Incorrect email or password. Please try again." };
+
+  // Incorrect password
+  if (m.includes("incorrect password") || m.includes("incorrect password. please try again")) {
+    return { type: "credentials", text: "Incorrect password." };
   }
+
+  // Account locked
+  if (m.includes("account temporarily locked") || m.includes("account locked") || m.includes("429")) {
+    return { type: "lockout", text: msg };
+  }
+
+  // Suspended / banned
   if (m.includes("suspended") || m.includes("banned") || m.includes("403")) {
     return { type: "banned", text: "Your account has been suspended. Contact support." };
   }
-  if (m.includes("not found") || m.includes("user not found")) {
-    return { type: "credentials", text: "No account found with that email. Sign up first." };
+
+  // Unverified email
+  if (m.includes("verify your email") || m.includes("verify your email before") || m.includes("email not verified")) {
+    return { type: "unverified", text: "Please verify your email before logging in." };
   }
-  if (m.includes("400") || m.includes("validation") || m.includes("invalid")) {
+
+  // Validation errors
+  if (m.includes("valid email") || m.includes("validation") || m.includes("400")) {
     return { type: "validation", text: "Please enter a valid email address and password." };
   }
-  // Fallback: show raw message if it's human-readable, else a generic
+
+  // Generic login failure (from backend catch block)
+  if (m.includes("login failed") || m.includes("please try again")) {
+    return { type: "generic", text: "Login failed. Please try again." };
+  }
+
+  // Fallback: show the raw backend message if it's human-readable
   const isReadable = msg.length < 120 && !msg.startsWith("{") && !msg.includes("Error:");
   return {
     type: "generic",
-    text: isReadable ? msg : "Login failed. Please check your details and try again.",
+    text: isReadable ? msg : "Login failed. Please try again.",
   };
 };
 
