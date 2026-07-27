@@ -15,7 +15,6 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { premiumAPI } from "../services/apiService";
 import { useAuth } from "../context/AuthContext";
-import "../style/paymentCallback.css";
 
 type VerifyState =
     | { status: "loading" }

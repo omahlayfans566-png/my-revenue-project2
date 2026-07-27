@@ -28,7 +28,6 @@ import giftRoutes from "./routes/giftRoutes.js";
 import referralRoutes from "./routes/referralRoutes.js";
 import storyRoutes from "./routes/storyRoutes.js";
 import safetyRoutes from "./routes/safetyRoutes.js";
-import matchingRoutes from "./routes/matchingRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { verifyEmailService } from "./services/emailService.js";
 import { requestLogger } from "./middleware/requestLogger.js";
@@ -389,8 +388,6 @@ app.use("/api/gifts", giftRoutes);
 app.use("/api/referrals", referralRoutes);
 app.use("/api/stories", storyRoutes);
 app.use("/api/safety", safetyRoutes);
-app.use("/api/matching", matchingRoutes);
-
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
     const ok = isMongoConnected();

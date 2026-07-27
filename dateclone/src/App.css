@@ -608,3 +608,108 @@
   margin-bottom: 24px;
   line-height: 1.6;
 }
+
+/* ── Responsive Design System ────────────────────────────────────────────────── */
+/* Mobile First - base styles are for mobile */
+
+/* Small phones (< 360px) */
+@media (max-width: 359px) {
+  :root {
+    --text-xs: 0.675rem;
+    --text-sm: 0.75rem;
+    --text-base: 0.85rem;
+    --text-md: 0.9rem;
+    --text-lg: 1rem;
+    --text-xl: 1.1rem;
+    --text-2xl: 1.25rem;
+    --text-3xl: 1.5rem;
+    --text-4xl: 1.75rem;
+    --text-5xl: 2rem;
+    --space-4: 12px;
+    --space-6: 16px;
+    --space-8: 24px;
+    --space-10: 32px;
+    --space-12: 40px;
+    --space-16: 48px;
+  }
+  .container { padding: 0 12px; }
+  .btn { padding: 10px 18px; font-size: var(--text-sm); }
+  .page-title { font-size: var(--text-2xl); }
+}
+
+/* Mobile (360px - 480px) */
+@media (min-width: 360px) and (max-width: 480px) {
+  :root {
+    --text-xs: 0.7rem;
+    --text-sm: 0.78rem;
+    --text-base: 0.88rem;
+    --text-lg: 1rem;
+    --text-xl: 1.1rem;
+    --text-2xl: 1.3rem;
+    --text-3xl: 1.6rem;
+    --text-4xl: 1.85rem;
+    --text-5xl: 2.25rem;
+  }
+  .container { padding: 0 14px; }
+}
+
+/* Large phones / small tablets (481px - 768px) */
+@media (min-width: 481px) and (max-width: 768px) {
+  .container { padding: 0 20px; }
+}
+
+/* Tablets (769px - 1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .container { max-width: 960px; padding: 0 24px; }
+}
+
+/* Laptops / Desktops (1025px - 1440px) */
+@media (min-width: 1025px) and (max-width: 1440px) {
+  .container { max-width: 1140px; }
+}
+
+/* Large desktops (1441px - 1920px) */
+@media (min-width: 1441px) and (max-width: 1920px) {
+  .container { max-width: 1280px; }
+}
+
+/* TV / Ultra-wide (1921px+) */
+@media (min-width: 1921px) {
+  :root {
+    --text-xs: 0.85rem;
+    --text-sm: 0.95rem;
+    --text-base: 1.05rem;
+    --text-md: 1.1rem;
+    --text-lg: 1.25rem;
+    --text-xl: 1.4rem;
+    --text-2xl: 1.7rem;
+    --text-3xl: 2.1rem;
+    --text-4xl: 2.6rem;
+    --text-5xl: 3.5rem;
+  }
+  .container { max-width: 1600px; }
+}
+
+/* Landscape mode adjustments */
+@media (orientation: landscape) and (max-height: 500px) {
+  .page-wrapper { min-height: auto; }
+  .page-loader { min-height: 100vh; }
+  .section { padding: 40px 0; }
+}
+
+/* PWA Standalone mode */
+@media (display-mode: standalone) {
+  body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  .app-navbar { padding-top: calc(var(--space-3) + env(safe-area-inset-top)); }
+}
+
+/* Ensure images don't overflow */
+img { max-width: 100%; height: auto; }
+
+/* Fix horizontal overflow on all elements */
+*, *::before, *::after { box-sizing: border-box; }
+html { overflow-x: hidden; }
+body { overflow-x: hidden; width: 100%; }
+
+/* Ensure text is never clipped */
+h1, h2, h3, h4, h5, h6, p, span, a, button, li { overflow-wrap: break-word; word-wrap: break-word; hyphens: auto; }

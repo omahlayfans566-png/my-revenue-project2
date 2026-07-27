@@ -4,6 +4,7 @@ import AppNavbar from "../component/AppNavbar";
 import { messageAPI } from "../services/apiService";
 import { useAuth } from "../context/AuthContext";
 import { useSocket } from "../context/SocketContext";
+import EmojiPicker from "../component/EmojiPicker";
 import "../style/chat.css";
 
 // ─── Phone Number Detection (frontend) ──────────────────────────────────────
@@ -108,6 +109,7 @@ const Chat = () => {
     const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
     const [showSafetyBanner, setShowSafetyBanner] = useState(true);
     const [showMoreMenu, setShowMoreMenu] = useState(false);
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
     const bottomRef = useRef<HTMLDivElement>(null);
     const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -117,6 +119,7 @@ const Chat = () => {
     const editRef = useRef<HTMLTextAreaElement>(null);
     const menuRef = useRef<HTMLDivElement>(null);
     const moreMenuRef = useRef<HTMLDivElement>(null);
+    const emojiPickerRef = useRef<HTMLDivElement>(null);
 
     // Close menus on click outside
     useEffect(() => {
@@ -140,13 +143,9 @@ const Chat = () => {
             const list: Conv[] = res.conversations || [];
             setConvs(list);
             setTotalUnread(list.reduce((s, c) => s + (c.unreadCount || 0), 0));
-            if (paramId && !search) {
-                const found = list.find(c => c.user._id === paramId);
-                if (found) openConv(found);
-            }
         } catch { /* silent */ }
         finally { setConvLoading(false); }
-    }, [paramId]);
+    }, []);
 
     useEffect(() => { loadConvs(); }, [loadConvs]);
 
@@ -323,18 +322,8 @@ const Chat = () => {
         setMessages(prev => [...prev, optimistic]);
 
         try {
-            const payload: Record<string, any> = {
-                toUserId: activeConv.user._id,
-                content: text,
-                image: img,
-                ...extraOptions,
-                replyTo: replyTo?._id,
-                tempId,
-            };
-            if (connected) {
-                socket?.emit("send_message", payload);
-            }
-            await messageAPI.sendMessage(activeConv.user._id, text, img, extraOptions);
+            // Send via API only - socket handles real-time notification
+            const res = await messageAPI.sendMessage(activeConv.user._id, text, img, extraOptions);
             setConvs(prev => prev.map(c =>
                 c._id === activeConv._id
                     ? { ...c, lastMessage: { content: text || extraOptions.fileName || "[Media]", createdAt: new Date().toISOString() } }
@@ -1013,13 +1002,25 @@ const Chat = () => {
                                         <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
                                     </svg>
                                 </button>
-                                <button className="chat-attach-btn" title="Emoji" aria-label="Emoji picker">
+                                <button className="chat-attach-btn" onClick={() => setShowEmojiPicker(!showEmojiPicker)} title="Emoji" aria-label="Emoji picker">
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
                                     </svg>
                                 </button>
                                 <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleImagePick} />
                                 <input ref={docRef} type="file" style={{ display: "none" }} onChange={handleFilePick} />
+                                {showEmojiPicker && (
+                                    <div className="chat-emoji-picker-wrapper" ref={emojiPickerRef}>
+                                        <EmojiPicker
+                                            onSelect={(emoji: string) => {
+                                                setInput(prev => prev + emoji);
+                                                setShowEmojiPicker(false);
+                                            }}
+                                            show={showEmojiPicker}
+                                            onClose={() => setShowEmojiPicker(false)}
+                                        />
+                                    </div>
+                                )}
                                 <textarea
                                     className="chat-input"
                                     placeholder={`Message ${activeConv.user.firstName}…`}

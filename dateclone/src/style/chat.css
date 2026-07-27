@@ -1879,6 +1879,15 @@
   text-align: center;
 }
 
+/* ─── Emoji Picker Wrapper ───────────────────────────────────────── */
+.chat-emoji-picker-wrapper {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  z-index: 100;
+  margin-bottom: 8px;
+}
+
 /* ─── Loading Spinner ───────────────────────────────────────────── */
 .chat-spinner {
   width: 36px;

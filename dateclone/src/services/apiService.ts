@@ -78,19 +78,20 @@ const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any
             body = await response.json();
         } catch {
             const statusMessages: Record<number, string> = {
-                502: "Backend server is not running. Open a terminal in /backend and run: npm run dev",
-                503: "Server is temporarily unavailable. Please try again in a moment.",
-                504: "Request timed out. Make sure the backend server is running.",
-                500: "Internal server error. Check the backend terminal for details.",
-                404: "API endpoint not found. Make sure the backend server is running.",
+                502: "Our service is temporarily unavailable. Please try again later.",
+                503: "Our service is temporarily unavailable. Please try again soon.",
+                504: "The request timed out. Please check your connection and try again.",
+                500: "We're experiencing a temporary issue. Please try again shortly.",
+                404: "The requested resource was not found. Please try again.",
             };
             const msg = statusMessages[response.status]
-                ?? `Unexpected server response (status ${response.status}). Make sure the backend is running.`;
+                ?? "Something went wrong. Please try again.";
             throw new Error(msg);
         }
 
         if (!response.ok) {
-            throw new Error(body.message || `Request failed (${response.status})`);
+            const friendlyError = body?.message || "We couldn't complete your request. Please try again.";
+            throw new Error(friendlyError);
         }
 
         // Cache successful GET responses

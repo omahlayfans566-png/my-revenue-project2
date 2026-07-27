@@ -21,9 +21,10 @@ import {
     send2FACode,
 } from "../services/emailService.js";
 import { onboardMember } from "../services/onboardingService.js";
-import { notifySuggestionsChanged } from "../services/suggestionService.js";
+
 
 const router = express.Router();
+// Optimised public fields projection - only select what's needed
 const PUB_FIELDS =
     "-password -verificationToken -verificationTokenExpires -passwordResetToken -passwordResetExpires -refreshTokens -deviceSessions -twoFactorSecret -loginAttempts";
 
@@ -60,37 +61,61 @@ const publicUser = (u) => ({
     twoFactorEnabled: u.twoFactorEnabled ?? false,
 });
 
-// ── Helper to log activity ─────────────────────────────────────────────────────
-const logActivity = async (userId, action, details = "", req = null) => {
-    try {
-        await ActivityLog.create({
-            userId,
-            action,
-            details,
-            ipAddress: req?.ip || req?.headers?.["x-forwarded-for"] || "",
-            userAgent: req?.headers?.["user-agent"] || "",
-        });
-    } catch (err) {
-        console.error("[ActivityLog] Error:", err.message);
+// ── Batch activity logging (non-blocking) ────────────────────────────────────
+// Accumulates log entries and writes them in bulk every 5 seconds,
+// avoiding individual DB writes on the critical request path.
+const BATCH_INTERVAL_MS = 5000;
+let activityBatch = [];
+let loginHistoryBatch = [];
+let batchTimer = null;
+
+const flushBatches = async () => {
+    const aBatch = activityBatch.splice(0);
+    const lBatch = loginHistoryBatch.splice(0);
+    if (aBatch.length) {
+        ActivityLog.insertMany(aBatch).catch(err =>
+            console.error("[BatchActivityLog] Error:", err.message)
+        );
+    }
+    if (lBatch.length) {
+        LoginHistory.insertMany(lBatch).catch(err =>
+            console.error("[BatchLoginHistory] Error:", err.message)
+        );
     }
 };
 
-// ── Helper to log login history ────────────────────────────────────────────────
-const logLoginHistory = async (userId, success, req, failReason = "", method = "password", sessionId = "") => {
-    try {
-        await LoginHistory.create({
-            userId,
-            success,
-            method,
-            failReason,
-            sessionId,
-            ipAddress: req?.ip || req?.headers?.["x-forwarded-for"] || "",
-            userAgent: req?.headers?.["user-agent"] || "",
-            device: req?.headers?.["user-agent"]?.slice(0, 100) || "",
-        });
-    } catch (err) {
-        console.error("[LoginHistory] Error:", err.message);
+const scheduleFlush = () => {
+    if (!batchTimer) {
+        batchTimer = setTimeout(() => {
+            batchTimer = null;
+            flushBatches();
+        }, BATCH_INTERVAL_MS);
     }
+};
+
+const queueActivityLog = (userId, action, details = "", req = null) => {
+    activityBatch.push({
+        userId,
+        action,
+        details,
+        ipAddress: req?.ip || req?.headers?.["x-forwarded-for"] || "",
+        userAgent: req?.headers?.["user-agent"] || "",
+    });
+    scheduleFlush();
+};
+
+const queueLoginHistory = (userId, success, req, failReason = "", method = "password", sessionId = "") => {
+    loginHistoryBatch.push({
+        userId,
+        success,
+        method,
+        failReason,
+        sessionId,
+        ipAddress: req?.ip || req?.headers?.["x-forwarded-for"] || "",
+        userAgent: req?.headers?.["user-agent"] || "",
+        device: req?.headers?.["user-agent"]?.slice(0, 100) || "",
+    });
+    scheduleFlush();
 };
 
 // ── Helper to get device info from request ─────────────────────────────────────
@@ -188,7 +213,7 @@ const activateWithOtp = async (email, plainOtp) => {
     user.refreshTokens.push(refreshToken);
     await user.save();
 
-    sendWelcomeEmail(user.email, user.firstName).catch(() => {});
+    sendWelcomeEmail(user.email, user.firstName).catch(() => { });
 
     return {
         user,

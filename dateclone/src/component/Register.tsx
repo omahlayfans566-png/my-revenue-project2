@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import "../style/register.css";
 import { authAPI, setAuthToken, saveUserToLocal } from "../services/apiService";
 
 // ─── African countries ────────────────────────────────────────────────────────
