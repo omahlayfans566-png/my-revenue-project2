@@ -330,9 +330,21 @@ export const matchAPI = {
     passUser: async (passedUserId: string) =>
         apiCall("/matches/pass", { method: "POST", body: JSON.stringify({ passedUserId }) }),
 
-    getMatches: async () => apiCall("/matches/my-matches"),
+    getMatches: async (page: number = 1, limit: number = 50) =>
+        apiCall(`/matches/my-matches?page=${page}&limit=${limit}`),
 
-    getLikesReceived: async () => apiCall("/matches/likes-received"),
+    getLikesReceived: async (page: number = 1, limit: number = 50) =>
+        apiCall(`/matches/likes-received?page=${page}&limit=${limit}`),
+
+    getMatchesCount: async () => apiCall("/matches/matches/count"),
+
+    getLikesCount: async () => apiCall("/matches/likes/count"),
+
+    likeBack: async (likedUserId: string) =>
+        apiCall("/matches/like-back", { method: "POST", body: JSON.stringify({ likedUserId }) }),
+
+    reportUser: async (reportedUserId: string, reason: string, description?: string) =>
+        apiCall("/matches/report", { method: "POST", body: JSON.stringify({ reportedUserId, reason, description }) }),
 
     blockUser: async (blockedUserId: string) =>
         apiCall("/matches/block", { method: "POST", body: JSON.stringify({ blockedUserId }) }),

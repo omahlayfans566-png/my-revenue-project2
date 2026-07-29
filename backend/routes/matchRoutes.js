@@ -2,6 +2,7 @@ import express from "express";
 import mongoose from "mongoose";
 import { Match } from "../models/Match.js";
 import { User } from "../models/User.js";
+import { Report } from "../models/Report.js";
 import { authenticateToken } from "../middleware/auth.js";
 import {
     getRecentlyJoined,
@@ -17,10 +18,25 @@ const router = express.Router();
 // ── Helper: validate MongoDB ObjectId ──────────────────────────────────────────
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
+// ── Admin check helper ─────────────────────────────────────────────────────────
+const isAdminUser = async (userId) => {
+    const user = await User.findById(userId).select("role isAdmin").lean();
+    return user?.role === "admin" || user?.isAdmin === true;
+};
+
+// ── Premium check ──────────────────────────────────────────────────────────────
+const canViewLikes = async (userId) => {
+    const user = await User.findById(userId).select("isPremium premiumTier premiumExpires role isAdmin").lean();
+    // Admin bypass
+    if (user?.role === "admin" || user?.isAdmin === true) return true;
+    // Premium check
+    if (user?.isPremium && user?.premiumExpires && new Date(user.premiumExpires) > new Date()) return true;
+    return false;
+};
+
 // ── GET /suggestions  (recommended for-you feed) ──────────────────────────────
 router.get("/suggestions", authenticateToken, async (req, res) => {
     try {
-        // Use the new suggestion service with proper exclusions
         const suggestions = await getFreshSuggestions(req.user.userId);
         res.json({ success: true, suggestions });
     } catch (err) {
@@ -60,10 +76,8 @@ router.get("/nearby", authenticateToken, async (req, res) => {
 });
 
 // ── GET /online ───────────────────────────────────────────────────────────────
-// Online = active in last 15 minutes (via socket tracking on server)
 router.get("/online", authenticateToken, async (_req, res) => {
     try {
-        // The socket service populates onlineUsers — fallback to recently-active if not available
         const onlineIds = global.onlineUsers ? Array.from(global.onlineUsers.keys()) : [];
         const users = onlineIds.length > 0
             ? await User.find({ _id: { $in: onlineIds }, emailVerified: true, isBanned: false })
@@ -76,86 +90,20 @@ router.get("/online", authenticateToken, async (_req, res) => {
     }
 });
 
-// ── Helper: check daily like limit ─────────────────────────────────────────────
-const checkDailyLikeLimit = async (userId) => {
-    const user = await User.findById(userId).select("isPremium premiumTier premiumExpires");
-    if (!user) return { allowed: false, message: "User not found" };
-
-    // Premium users have unlimited likes
-    if (user.isPremium && user.premiumExpires && new Date(user.premiumExpires) > new Date()) {
-        return { allowed: true };
-    }
-
-    // Free users: limit to 10 likes per day
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-
-    const todayLikes = await Match.countDocuments({
-        userId,
-        userLiked: true,
-        createdAt: { $gte: todayStart },
-    });
-
-    const FREE_DAILY_LIMIT = 10;
-    if (todayLikes >= FREE_DAILY_LIMIT) {
-        return { allowed: false, message: `Daily like limit reached (${FREE_DAILY_LIMIT}). Upgrade to Premium for unlimited likes.` };
-    }
-
-    return { allowed: true };
-};
-
-// ── Helper: check daily super like limit ───────────────────────────────────────
-const checkDailySuperLikeLimit = async (userId) => {
-    const user = await User.findById(userId).select("isPremium premiumTier premiumExpires");
-    if (!user) return { allowed: false, message: "User not found" };
-
-    // Premium limits: Basic=5, Gold=10, Platinum=unlimited
-    let maxSuperLikes = 1; // free default
-    if (user.isPremium && user.premiumExpires && new Date(user.premiumExpires) > new Date()) {
-        if (user.premiumTier === "platinum") return { allowed: true }; // unlimited
-        if (user.premiumTier === "gold") maxSuperLikes = 10;
-        else if (user.premiumTier === "basic") maxSuperLikes = 5;
-    }
-
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-
-    const todaySuperLikes = await Match.countDocuments({
-        userId,
-        status: "superliked",
-        createdAt: { $gte: todayStart },
-    });
-
-    if (todaySuperLikes >= maxSuperLikes) {
-        return { allowed: false, message: `Daily super like limit reached (${maxSuperLikes}). Upgrade to Premium for more.` };
-    }
-
-    return { allowed: true };
-};
-
 // ── POST /like ────────────────────────────────────────────────────────────────
 router.post("/like", authenticateToken, async (req, res) => {
     try {
         const { userId } = req.user;
         const { likedUserId } = req.body;
 
-        // ── Validation ──────────────────────────────────────────────────────────
         if (!likedUserId) {
             return res.status(400).json({ success: false, message: "likedUserId is required" });
         }
         if (!isValidObjectId(likedUserId)) {
             return res.status(400).json({ success: false, message: "Invalid user ID format" });
         }
-
-        // FIX: Compare ObjectIds using .toString() — direct === comparison always fails
         if (userId.toString() === likedUserId.toString()) {
             return res.status(400).json({ success: false, message: "Cannot like yourself" });
-        }
-
-        // Check daily like limit
-        const limitCheck = await checkDailyLikeLimit(userId);
-        if (!limitCheck.allowed) {
-            return res.status(429).json({ success: false, message: limitCheck.message });
         }
 
         // Verify target user exists
@@ -174,13 +122,11 @@ router.post("/like", authenticateToken, async (req, res) => {
                     alreadyLiked: true,
                 });
             }
-            // If previously passed/rejected, update to liked
             existingMatch.userLiked = true;
             existingMatch.userLikedAt = new Date();
             existingMatch.status = "liked";
         }
 
-        // ── Create or update match record ───────────────────────────────────────
         let match;
         if (existingMatch) {
             match = existingMatch;
@@ -216,7 +162,6 @@ router.post("/like", authenticateToken, async (req, res) => {
             } else {
                 global.io.to(likedUserId).emit("new_like", { from: userId });
             }
-            // Emit like status update so UI can update in real-time
             global.io.to(userId).emit("like_status", {
                 targetUserId: likedUserId,
                 liked: true,
@@ -224,7 +169,6 @@ router.post("/like", authenticateToken, async (req, res) => {
             });
         }
 
-        // Notify that suggestions may have changed
         notifySuggestionsChanged();
 
         // ── Create notifications ────────────────────────────────────────────────
@@ -268,7 +212,6 @@ router.post("/like", authenticateToken, async (req, res) => {
             }
         } catch (notifErr) {
             console.error("[Like] Notification error:", notifErr.message);
-            // Non-critical — don't fail the like for a notification error
         }
 
         res.json({
@@ -279,7 +222,6 @@ router.post("/like", authenticateToken, async (req, res) => {
         });
     } catch (err) {
         console.error("[Like]", err);
-        // Duplicate key — the record already exists (race condition)
         if (err.code === 11000) {
             try {
                 const existing = await Match.findOne({ userId: req.user.userId, matchedUserId: req.body.likedUserId });
@@ -295,7 +237,6 @@ router.post("/like", authenticateToken, async (req, res) => {
             } catch { /* fall through */ }
             return res.status(409).json({ success: false, message: "Already liked this user", alreadyLiked: true });
         }
-        // Mongoose CastError — invalid ObjectId
         if (err.name === "CastError") {
             return res.status(400).json({ success: false, message: "Invalid user ID format" });
         }
@@ -309,26 +250,16 @@ router.post("/superlike", authenticateToken, async (req, res) => {
         const { userId } = req.user;
         const { likedUserId } = req.body;
 
-        // ── Validation ──────────────────────────────────────────────────────────
         if (!likedUserId) {
             return res.status(400).json({ success: false, message: "likedUserId is required" });
         }
         if (!isValidObjectId(likedUserId)) {
             return res.status(400).json({ success: false, message: "Invalid user ID format" });
         }
-
-        // FIX: Compare ObjectIds using .toString()
         if (userId.toString() === likedUserId.toString()) {
             return res.status(400).json({ success: false, message: "Cannot super-like yourself" });
         }
 
-        // Check daily super like limit
-        const limitCheck = await checkDailySuperLikeLimit(userId);
-        if (!limitCheck.allowed) {
-            return res.status(429).json({ success: false, message: limitCheck.message });
-        }
-
-        // ── Check for existing match record ─────────────────────────────────────
         const existingMatch = await Match.findOne({ userId, matchedUserId: likedUserId });
         if (existingMatch) {
             if (existingMatch.userLiked || existingMatch.status === "liked" || existingMatch.status === "superliked") {
@@ -369,7 +300,6 @@ router.post("/superlike", authenticateToken, async (req, res) => {
 
         await match.save();
 
-        // ── Emit real-time socket events ────────────────────────────────────────
         if (global.io) {
             global.io.to(likedUserId).emit("super_like", { from: userId });
             if (match.status === "matched") {
@@ -384,10 +314,8 @@ router.post("/superlike", authenticateToken, async (req, res) => {
             });
         }
 
-        // Notify that suggestions may have changed
         notifySuggestionsChanged();
 
-        // ── Create notifications ────────────────────────────────────────────────
         try {
             if (match.status === "matched") {
                 const [liker, liked] = await Promise.all([
@@ -480,7 +408,6 @@ router.post("/pass", authenticateToken, async (req, res) => {
         }
         await match.save();
 
-        // Notify that suggestions may have changed after passing
         notifySuggestionsChanged();
 
         res.json({ success: true, message: "Passed" });
@@ -500,9 +427,21 @@ router.post("/pass", authenticateToken, async (req, res) => {
 router.get("/my-matches", authenticateToken, async (req, res) => {
     try {
         const { userId } = req.user;
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 50;
+        const skip = (page - 1) * limit;
+
         const matches = await Match.find({
             $or: [{ userId, status: "matched" }, { matchedUserId: userId, status: "matched" }],
-        }).populate("matchedUserId userId", "-password -verificationToken -refreshTokens");
+        })
+        .sort({ matchedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("matchedUserId userId", "-password -verificationToken -refreshTokens");
+
+        const total = await Match.countDocuments({
+            $or: [{ userId, status: "matched" }, { matchedUserId: userId, status: "matched" }],
+        });
 
         const formatted = matches.map(m => ({
             _id: m._id,
@@ -512,9 +451,23 @@ router.get("/my-matches", authenticateToken, async (req, res) => {
             lastMessageAt: m.lastMessageAt,
         }));
 
-        res.json({ success: true, matches: formatted });
+        res.json({ success: true, matches: formatted, total, page, pages: Math.ceil(total / limit) });
     } catch (err) {
+        console.error("[My Matches]", err);
         res.status(500).json({ success: false, message: "Failed to fetch matches" });
+    }
+});
+
+// ── GET /matches/count ─────────────────────────────────────────────────────────
+router.get("/matches/count", authenticateToken, async (req, res) => {
+    try {
+        const { userId } = req.user;
+        const count = await Match.countDocuments({
+            $or: [{ userId, status: "matched" }, { matchedUserId: userId, status: "matched" }],
+        });
+        res.json({ success: true, count });
+    } catch (err) {
+        res.status(500).json({ success: false, message: "Failed to get match count" });
     }
 });
 
@@ -522,23 +475,205 @@ router.get("/my-matches", authenticateToken, async (req, res) => {
 router.get("/likes-received", authenticateToken, async (req, res) => {
     try {
         const { userId } = req.user;
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 50;
+        const skip = (page - 1) * limit;
+
+        const isPremium = await canViewLikes(userId);
+
         const likes = await Match.find({
             matchedUserId: userId,
             userLiked: true,
             status: { $in: ["liked", "superliked"] },
-        }).populate("userId", "-password -verificationToken -refreshTokens");
+        })
+        .sort({ userLikedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("userId", "-password -verificationToken -refreshTokens");
+
+        const total = await Match.countDocuments({
+            matchedUserId: userId,
+            userLiked: true,
+            status: { $in: ["liked", "superliked"] },
+        });
+
+        // For non-premium users, send blurred data
+        const formatted = likes.map(l => ({
+            _id: l._id,
+            from: isPremium ? l.userId : {
+                _id: l.userId?._id,
+                isBlurred: true,
+            },
+            likedAt: l.userLikedAt,
+            isSuperLike: l.status === "superliked",
+            isPremiumView: isPremium,
+        }));
 
         res.json({
             success: true,
-            likes: likes.map(l => ({
-                _id: l._id,
-                from: l.userId,
-                likedAt: l.userLikedAt,
-                isSuperLike: l.status === "superliked",
-            })),
+            likes: formatted,
+            total,
+            page,
+            pages: Math.ceil(total / limit),
+            isPremiumView: isPremium,
         });
     } catch (err) {
+        console.error("[Likes Received]", err);
         res.status(500).json({ success: false, message: "Failed to fetch likes" });
+    }
+});
+
+// ── GET /likes/count ───────────────────────────────────────────────────────────
+router.get("/likes/count", authenticateToken, async (req, res) => {
+    try {
+        const { userId } = req.user;
+        const count = await Match.countDocuments({
+            matchedUserId: userId,
+            userLiked: true,
+            status: { $in: ["liked", "superliked"] },
+        });
+        res.json({ success: true, count });
+    } catch (err) {
+        res.status(500).json({ success: false, message: "Failed to get likes count" });
+    }
+});
+
+// ── GET /likes-received/:userId/profile (premium - view liker's full profile) ──
+router.get("/likes-received/:likerId/profile", authenticateToken, async (req, res) => {
+    try {
+        const { userId } = req.user;
+        const { likerId } = req.params;
+
+        if (!isValidObjectId(likerId)) {
+            return res.status(400).json({ success: false, message: "Invalid user ID" });
+        }
+
+        // Verify they actually liked the current user
+        const likeExists = await Match.findOne({
+            userId: likerId,
+            matchedUserId: userId,
+            userLiked: true,
+            status: { $in: ["liked", "superliked"] },
+        });
+
+        if (!likeExists) {
+            return res.status(404).json({ success: false, message: "Like not found" });
+        }
+
+        const canView = await canViewLikes(userId);
+        if (!canView) {
+            return res.status(403).json({ success: false, message: "Premium subscription required to view profiles" });
+        }
+
+        const userProfile = await User.findById(likerId)
+            .select("-password -verificationToken -refreshTokens -twoFactorSecret")
+            .lean();
+
+        if (!userProfile) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        res.json({ success: true, profile: userProfile });
+    } catch (err) {
+        console.error("[View Liker Profile]", err);
+        res.status(500).json({ success: false, message: "Failed to load profile" });
+    }
+});
+
+// ── POST /like-back ────────────────────────────────────────────────────────────
+router.post("/like-back", authenticateToken, async (req, res) => {
+    try {
+        const { userId } = req.user;
+        const { likedUserId } = req.body;
+
+        if (!likedUserId) {
+            return res.status(400).json({ success: false, message: "likedUserId is required" });
+        }
+
+        const canView = await canViewLikes(userId);
+        if (!canView) {
+            return res.status(403).json({ success: false, message: "Premium subscription required to like back" });
+        }
+
+        // Verify they liked you first
+        const theirLike = await Match.findOne({
+            userId: likedUserId,
+            matchedUserId: userId,
+            userLiked: true,
+            status: { $in: ["liked", "superliked"] },
+        });
+
+        if (!theirLike) {
+            return res.status(404).json({ success: false, message: "This user hasn't liked you" });
+        }
+
+        // Create match
+        let myMatch = await Match.findOne({ userId, matchedUserId: likedUserId });
+        if (myMatch) {
+            if (myMatch.status === "matched") {
+                return res.json({ success: true, isMatch: true, message: "Already matched!" });
+            }
+            myMatch.userLiked = true;
+            myMatch.userLikedAt = new Date();
+            myMatch.status = "matched";
+            myMatch.matchedAt = new Date();
+        } else {
+            myMatch = new Match({
+                userId,
+                matchedUserId: likedUserId,
+                userLiked: true,
+                userLikedAt: new Date(),
+                status: "matched",
+                matchedAt: new Date(),
+            });
+        }
+
+        // Update their record
+        if (theirLike.status !== "matched") {
+            theirLike.status = "matched";
+            theirLike.matchedAt = new Date();
+            await theirLike.save();
+        }
+
+        await myMatch.save();
+
+        if (global.io) {
+            global.io.to(likedUserId).emit("new_match", { with: userId });
+            global.io.to(userId).emit("new_match", { with: likedUserId });
+        }
+
+        // Notifications
+        try {
+            const [me, them] = await Promise.all([
+                User.findById(userId).select("firstName").lean(),
+                User.findById(likedUserId).select("firstName").lean(),
+            ]);
+            await Promise.allSettled([
+                createNotification({
+                    userId,
+                    type: "match",
+                    title: "It's a Match! 💕",
+                    message: `You matched with ${them?.firstName || "someone"}!`,
+                    referenceId: likedUserId,
+                    referenceModel: "User",
+                    icon: "💞",
+                }),
+                createNotification({
+                    userId: likedUserId,
+                    type: "match",
+                    title: "It's a Match! 💕",
+                    message: `You matched with ${me?.firstName || "someone"}!`,
+                    referenceId: userId,
+                    referenceModel: "User",
+                    icon: "💞",
+                }),
+            ]);
+        } catch { /* silent */ }
+
+        res.json({ success: true, isMatch: true, message: "It's a match! 💕" });
+    } catch (err) {
+        console.error("[Like Back]", err);
+        res.status(500).json({ success: false, message: "Failed to like back" });
     }
 });
 
@@ -552,7 +687,6 @@ router.post("/unmatch", authenticateToken, async (req, res) => {
             return res.status(400).json({ success: false, message: "unmatchedUserId is required" });
         }
 
-        // Remove the match relationship
         await Match.deleteMany({
             $or: [
                 { userId, matchedUserId: unmatchedUserId, status: "matched" },
@@ -560,13 +694,13 @@ router.post("/unmatch", authenticateToken, async (req, res) => {
             ],
         });
 
-        // Notify that suggestions may have changed after unmatching
         notifySuggestionsChanged();
 
-        res.json({
-            success: true,
-            message: "Unmatched successfully",
-        });
+        if (global.io) {
+            global.io.to(unmatchedUserId).emit("removed_match", { with: userId });
+        }
+
+        res.json({ success: true, message: "Unmatched successfully" });
     } catch (err) {
         console.error("[Unmatch]", err);
         res.status(500).json({ success: false, message: "Failed to unmatch" });
@@ -583,23 +717,63 @@ router.post("/block", authenticateToken, async (req, res) => {
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
+        if (!user.blocked) user.blocked = [];
         if (!user.blocked.map(String).includes(blockedUserId)) {
             user.blocked.push(blockedUserId);
             await user.save();
         }
 
-        // Mark any match as blocked
         await Match.updateMany(
             { $or: [{ userId, matchedUserId: blockedUserId }, { userId: blockedUserId, matchedUserId: userId }] },
             { status: "blocked" }
         );
 
-        // Notify that suggestions may have changed after blocking
         notifySuggestionsChanged();
+
+        if (global.io) {
+            global.io.to(blockedUserId).emit("blocked_by", { by: userId });
+        }
 
         res.json({ success: true, message: "User blocked" });
     } catch (err) {
+        console.error("[Block]", err);
         res.status(500).json({ success: false, message: "Failed to block user" });
+    }
+});
+
+// ── POST /report ──────────────────────────────────────────────────────────────
+router.post("/report", authenticateToken, async (req, res) => {
+    try {
+        const { userId } = req.user;
+        const { reportedUserId, reason, description } = req.body;
+
+        if (!reportedUserId || !reason) {
+            return res.status(400).json({ success: false, message: "reportedUserId and reason are required" });
+        }
+
+        // Check for duplicate report
+        const existingReport = await Report.findOne({
+            reportedBy: userId,
+            reportedUser: reportedUserId,
+        });
+
+        if (existingReport) {
+            return res.status(409).json({ success: false, message: "You have already reported this user" });
+        }
+
+        const report = new Report({
+            reportedBy: userId,
+            reportedUser: reportedUserId,
+            category: reason,
+            description: description || "",
+        });
+
+        await report.save();
+
+        res.json({ success: true, message: "User reported successfully. We will review this." });
+    } catch (err) {
+        console.error("[Report]", err);
+        res.status(500).json({ success: false, message: "Failed to submit report" });
     }
 });
 

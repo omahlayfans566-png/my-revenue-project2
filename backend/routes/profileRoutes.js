@@ -112,8 +112,10 @@ router.put("/:userId", authenticateToken, async (req, res) => {
         });
 
         // Also strip other empty strings so we don't overwrite existing data with ""
+        // But keep coverPhoto and profilePicture — empty string means "remove photo"
+        const ALLOW_EMPTY = ["coverPhoto", "profilePicture"];
         Object.keys(updates).forEach(k => {
-            if (updates[k] === "") delete updates[k];
+            if (updates[k] === "" && !ALLOW_EMPTY.includes(k)) delete updates[k];
         });
 
         if (updates.dateOfBirth) {

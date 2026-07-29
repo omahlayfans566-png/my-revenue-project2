@@ -163,6 +163,8 @@ const Profile = () => {
   const [coverUploadProgress, setCoverUploadProgress] = useState(0);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -302,6 +304,46 @@ const Profile = () => {
       reader.readAsDataURL(file);
     } catch (err) {
       console.error("Avatar upload failed:", err);
+    }
+
+    e.target.value = "";
+  };
+
+  // ── Photo Gallery Upload ─────────────────────────────────────────────────
+  const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(file.type)) {
+      alert("Only JPG, PNG, and WEBP images are allowed.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image must be under 5MB.");
+      return;
+    }
+
+    setUploadingPhoto(true);
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const dataUrl = ev.target?.result as string;
+
+        // Append to existing photos
+        const newPhotos = [...photos, dataUrl];
+        const res = await profileAPI.updateProfile(u._id, { photos: newPhotos });
+        if (res?.user) {
+          updateLocalUser({ photos: newPhotos });
+        }
+
+        setUploadingPhoto(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error("Photo upload failed:", err);
+      setUploadingPhoto(false);
     }
 
     e.target.value = "";
@@ -663,13 +705,27 @@ const Profile = () => {
               </div>
             ))}
             <button
-              className="profile-gallery-add"
-              onClick={() => navigate("/profile/edit")}
+              className={`profile-gallery-add ${uploadingPhoto ? "profile-gallery-uploading" : ""}`}
+              onClick={() => galleryInputRef.current?.click()}
               title="Add more photos"
+              disabled={uploadingPhoto}
             >
-              <span className="profile-gallery-add-icon">+</span>
-              <span className="profile-gallery-add-label">Add Photo</span>
+              {uploadingPhoto ? (
+                <span className="auth-spinner" style={{ width: 24, height: 24, borderWidth: 2 }} />
+              ) : (
+                <>
+                  <span className="profile-gallery-add-icon">+</span>
+                  <span className="profile-gallery-add-label">Add Photo</span>
+                </>
+              )}
             </button>
+            <input
+              ref={galleryInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              style={{ display: "none" }}
+              onChange={handleGalleryUpload}
+            />
           </div>
         </div>
 
