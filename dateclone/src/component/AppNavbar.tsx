@@ -76,23 +76,24 @@ const AppNavbar = memo(({ unreadMessages: propUnreadMessages }: { unreadMessages
                 </ul>
 
                 <div className="app-nav-right">
-                    {user && user.isPremium ? (
-                        <div className="app-nav-premium-badge">
-                            <PremiumBadge tier={user.premiumTier} size="sm" />
-                        </div>
-                    ) : (
+                    {/* Go Premium button — only for non-premium users on desktop */}
+                    {!user?.isPremium && (
                         <Link to="/premium" className="app-nav-upgrade">
                             ✨ Go Premium
                         </Link>
                     )}
 
+                    {/* Single profile trigger: avatar + name + premium indicator + chevron */}
                     <div className="app-nav-profile" onClick={() => setProfileOpen(!profileOpen)}>
                         {user?.profilePicture ? (
                             <img src={user.profilePicture} alt="Profile" className="avatar avatar-sm nav-avatar" />
                         ) : (
-                            <div className="avatar avatar-sm nav-avatar">{initials}</div>
+                            <div className="avatar avatar-sm nav-avatar nav-avatar-initials">{initials}</div>
                         )}
                         <span className="nav-name">{user?.firstName}</span>
+                        {user?.isPremium && (
+                            <PremiumBadge tier={user.premiumTier} size="sm" />
+                        )}
                         <span className="nav-chevron">{profileOpen ? "▲" : "▼"}</span>
 
                         {profileOpen && (

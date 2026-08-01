@@ -198,6 +198,16 @@
     border: 2px solid #ff4081 !important;
 }
 
+.nav-avatar-initials {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #ff1744, #ff71a7);
+    color: white;
+    font-weight: 700;
+    font-size: 0.75rem;
+}
+
 .nav-name {
     font-weight: 600;
     font-size: 0.88rem;
@@ -232,6 +242,7 @@
         opacity: 0;
         transform: translateY(-10px) scale(0.97);
     }
+
     to {
         opacity: 1;
         transform: translateY(0) scale(1);
@@ -323,8 +334,15 @@
 }
 
 @keyframes mobileMenuIn {
-    from { opacity: 0; transform: translateY(-8px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .app-mobile-menu a,

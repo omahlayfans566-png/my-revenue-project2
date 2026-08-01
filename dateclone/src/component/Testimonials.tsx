@@ -2,12 +2,11 @@ import { useState, useEffect, useRef, useCallback, memo } from "react";
 import "../style/testimonials.css";
 
 // ── Black African couple photos from Unsplash ─────────────────────────────
-// Every photo is a verified Black African couple — professionally shot,
-// diverse skin tones, hairstyles, fashion and ages across the continent.
+// Every photo shows Black African couples — verified by Unsplash photo IDs.
 const STORIES = [
   {
     image:
-      "https://images.unsplash.com/photo-1611432579699-484f7990b127?auto=format&fit=crop&w=800&q=85",
+      "https://images.unsplash.com/photo-1607462109225-6b64ae2dd3cb?auto=format&fit=crop&w=800&q=85",
     name: "Chinedu & Adaeze",
     location: "Lagos, Nigeria",
     since: "Together 2 years",
@@ -16,7 +15,7 @@ const STORIES = [
   },
   {
     image:
-      "https://images.unsplash.com/photo-1602752250015-52934bc45613?auto=format&fit=crop&w=800&q=85",
+      "https://images.unsplash.com/photo-1543269664-647163ef2132?auto=format&fit=crop&w=800&q=85",
     name: "Kwame & Abena",
     location: "Accra, Ghana",
     since: "Married 1 year",
@@ -25,7 +24,7 @@ const STORIES = [
   },
   {
     image:
-      "https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?auto=format&fit=crop&w=800&q=85",
+      "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?auto=format&fit=crop&w=800&q=85",
     name: "Lerato & Sipho",
     location: "Johannesburg, South Africa",
     since: "Together 18 months",
@@ -34,7 +33,7 @@ const STORIES = [
   },
   {
     image:
-      "https://images.unsplash.com/photo-1516726817505-f5ed825624d8?auto=format&fit=crop&w=800&q=85",
+      "https://images.unsplash.com/photo-1566753323558-f4e0952af115?auto=format&fit=crop&w=800&q=85",
     name: "Amina & Hassan",
     location: "Nairobi, Kenya",
     since: "Together 3 years",
@@ -43,7 +42,7 @@ const STORIES = [
   },
   {
     image:
-      "https://images.unsplash.com/photo-1523635736037-da12fbe7b190?auto=format&fit=crop&w=800&q=85",
+      "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=85",
     name: "Brian & Grace",
     location: "Kampala, Uganda",
     since: "Married 8 months",
@@ -52,7 +51,7 @@ const STORIES = [
   },
   {
     image:
-      "https://images.unsplash.com/photo-1590439471364-192aa70c0b53?auto=format&fit=crop&w=800&q=85",
+      "https://images.unsplash.com/photo-1510511459019-5dda7724fd87?auto=format&fit=crop&w=800&q=85",
     name: "Thabo & Zinhle",
     location: "Durban, South Africa",
     since: "Together 2 years",
@@ -61,7 +60,7 @@ const STORIES = [
   },
   {
     image:
-      "https://images.unsplash.com/photo-1474552226712-ac0f0961a954?auto=format&fit=crop&w=800&q=85",
+      "https://images.unsplash.com/photo-1583394293214-bd7cec645f49?auto=format&fit=crop&w=800&q=85",
     name: "Aline & Eric",
     location: "Kigali, Rwanda",
     since: "Engaged",
@@ -70,7 +69,7 @@ const STORIES = [
   },
   {
     image:
-      "https://images.unsplash.com/photo-1531983412531-1f49a365ffed?auto=format&fit=crop&w=800&q=85",
+      "https://images.unsplash.com/photo-1609220136736-443140cffec6?auto=format&fit=crop&w=800&q=85",
     name: "Precious & Femi",
     location: "Abuja, Nigeria",
     since: "Together 1 year",

@@ -197,3 +197,34 @@
     height: 100%;
     object-fit: cover;
 }
+
+/* ── Background-fetch progress bar (non-blocking) ──────────────────────────── */
+.ep-fetching-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    z-index: 2000;
+    overflow: hidden;
+    background: rgba(255, 45, 122, 0.10);
+}
+
+.ep-fetching-bar-fill {
+    display: block;
+    height: 100%;
+    width: 40%;
+    background: linear-gradient(90deg, #ff1744, #ff71a7);
+    border-radius: 999px;
+    animation: ep-bar-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes ep-bar-slide {
+    0% {
+        transform: translateX(-120%);
+    }
+
+    100% {
+        transform: translateX(340%);
+    }
+}

@@ -42,22 +42,51 @@ const EditProfile = () => {
     const [success, setSuccess] = useState("");
     const [error, setError] = useState("");
 
-    // ── On mount: fetch the FULL profile from the API ──────────────────────
-    // The auth context only stores a stripped user object (login response).
-    // We must fetch from GET /profile/:id to get all profile fields including
-    // city, occupation, interests, etc. so the form pre-fills correctly.
+    // ── On mount: pre-fill from auth context immediately, then fetch full profile ──
+    // This fixes the blank-page bug: the form renders instantly with whatever
+    // data is already in the auth context, while the full profile loads in the
+    // background and updates the form with complete data.
     useEffect(() => {
-        if (!user?._id) return;
+        // Step 1: pre-fill immediately from auth context (no network needed)
+        if (user) {
+            const u = user as any;
+            setForm({
+                firstName: u.firstName ?? "",
+                lastName: u.lastName ?? "",
+                aboutMe: u.aboutMe ?? "",
+                occupation: u.occupation ?? "",
+                education: u.education ?? "",
+                city: u.city ?? "",
+                country: u.country ?? "",
+                state: u.state ?? "",
+                religion: u.religion ?? "",
+                relationshipGoal: u.relationshipGoal ?? "",
+                smoking: u.smoking ?? "",
+                drinking: u.drinking ?? "",
+                minAge: u.minAge ?? 18,
+                maxAge: u.maxAge ?? 80,
+                profilePicture: u.profilePicture ?? "",
+                interests: Array.isArray(u.interests) ? u.interests : [],
+                languages: Array.isArray(u.languages) ? u.languages : [],
+                lookingFor: u.lookingFor ?? "",
+                hasChildren: u.hasChildren ?? "",
+                wantsChildren: u.wantsChildren ?? "",
+                religionImportance: u.religionImportance ?? "",
+            });
+        }
 
+        // Step 2: if no user id yet, stop loading and bail
+        if (!user?._id) {
+            setFetching(false);
+            return;
+        }
+
+        // Step 3: fetch full profile from API in background to get all fields
         const fetchProfile = async () => {
             setFetching(true);
             try {
                 const res = await profileAPI.getProfile(user._id);
                 const p = res.user;
-
-                // Populate form with every field that exists on the stored profile.
-                // Fall back to the auth user for the core identity fields,
-                // then fall back to safe defaults.
                 setForm({
                     firstName: p.firstName ?? user.firstName ?? "",
                     lastName: p.lastName ?? user.lastName ?? "",
@@ -82,31 +111,8 @@ const EditProfile = () => {
                     religionImportance: p.religionImportance ?? "",
                 });
             } catch {
-                // If fetch fails fall back to whatever is in the auth context
-                const u = user as any;
-                setForm({
-                    firstName: u.firstName ?? "",
-                    lastName: u.lastName ?? "",
-                    aboutMe: u.aboutMe ?? "",
-                    occupation: u.occupation ?? "",
-                    education: u.education ?? "",
-                    city: u.city ?? "",
-                    country: u.country ?? "",
-                    state: u.state ?? "",
-                    religion: u.religion ?? "",
-                    relationshipGoal: u.relationshipGoal ?? "",
-                    smoking: u.smoking ?? "",
-                    drinking: u.drinking ?? "",
-                    minAge: u.minAge ?? 18,
-                    maxAge: u.maxAge ?? 80,
-                    profilePicture: u.profilePicture ?? "",
-                    interests: Array.isArray(u.interests) ? u.interests : [],
-                    languages: Array.isArray(u.languages) ? u.languages : [],
-                    lookingFor: u.lookingFor ?? "",
-                    hasChildren: u.hasChildren ?? "",
-                    wantsChildren: u.wantsChildren ?? "",
-                    religionImportance: u.religionImportance ?? "",
-                });
+                // Fetch failed — form is already pre-filled from auth context,
+                // so the user sees their data and can still edit it.
             } finally {
                 setFetching(false);
             }
@@ -115,7 +121,7 @@ const EditProfile = () => {
         fetchProfile();
     }, [user?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // ── Generic change handler ─────────────────────────────────────────────
+    // ── Generic field change handler ───────────────────────────────────────
     const handleChange = (
         e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
     ) => {
@@ -135,13 +141,12 @@ const EditProfile = () => {
         try {
             const res = await profileAPI.updateProfile(user._id, form);
 
-            // Update the auth context with the full returned user so other
-            // pages (Profile, Dashboard) immediately reflect the new data.
+            // Update auth context so Profile page and Navbar immediately reflect changes
             if (res.user) {
                 updateLocalUser(res.user);
             }
 
-            // Also refresh from server to keep sessionStorage fully in sync
+            // Refresh from server to keep sessionStorage fully in sync
             await refreshUser();
 
             setSuccess("Profile updated successfully! ✓");
@@ -153,28 +158,18 @@ const EditProfile = () => {
         }
     };
 
-    // ── Loading skeleton ───────────────────────────────────────────────────
-    if (fetching) {
-        return (
-            <div className="page-wrapper">
-                <AppNavbar />
-                <div className="edit-profile-page">
-                    <div className="edit-profile-card ep-loading">
-                        <div className="ep-loading-inner">
-                            <span className="auth-spinner" style={{ width: 32, height: 32, borderWidth: 3 }} />
-                            <p>Loading your profile…</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
     // ─────────────────────────────────────────────────────────────────────────
     return (
         <div className="page-wrapper">
             <AppNavbar />
             <div className="edit-profile-page">
+                {/* Subtle top-bar spinner while background fetch runs — never blocks the form */}
+                {fetching && (
+                    <div className="ep-fetching-bar" role="status" aria-label="Loading profile data">
+                        <span className="ep-fetching-bar-fill" />
+                    </div>
+                )}
+
                 <div className="edit-profile-card">
                     <div className="edit-profile-header">
                         <button className="ep-back" onClick={() => navigate("/profile")}>← Back</button>
@@ -186,7 +181,7 @@ const EditProfile = () => {
 
                     <form onSubmit={handleSubmit} className="ep-form">
 
-                        {/* ── Basic Info ──────────────────────────────────── */}
+                        {/* ── Basic Info ──────────────────────────────── */}
                         <div className="ep-section-title">Basic Info</div>
                         <div className="ep-row">
                             <div className="ep-field">
@@ -266,7 +261,7 @@ const EditProfile = () => {
                             )}
                         </div>
 
-                        {/* ── Location ────────────────────────────────────── */}
+                        {/* ── Location ────────────────────────────────── */}
                         <div className="ep-section-title">Location</div>
                         <div className="ep-row">
                             <div className="ep-field">
@@ -298,7 +293,7 @@ const EditProfile = () => {
                             </div>
                         </div>
 
-                        {/* ── Lifestyle ───────────────────────────────────── */}
+                        {/* ── Lifestyle ───────────────────────────────── */}
                         <div className="ep-section-title">Lifestyle</div>
                         <div className="ep-row">
                             <div className="ep-field">
@@ -370,7 +365,7 @@ const EditProfile = () => {
                             </div>
                         </div>
 
-                        {/* ── Match Preferences ───────────────────────────── */}
+                        {/* ── Match Preferences ───────────────────────── */}
                         <div className="ep-section-title">Match Preferences</div>
                         <div className="ep-row">
                             <div className="ep-field">
