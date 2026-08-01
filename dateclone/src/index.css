@@ -108,3 +108,13 @@ ol {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── Design Tokens ─────────────────────────────────────────────────────────── */
+:root {
+  --grad-brand: linear-gradient(135deg, #ff1744 0%, #ff2d7a 50%, #ff71a7 100%);
+  --color-brand: #ff2d7a;
+  --color-brand-dark: #ff1744;
+  --color-brand-light: #ff71a7;
+  --shadow-brand: 0 6px 20px rgba(255, 23, 68, 0.30);
+  --shadow-brand-hover: 0 10px 28px rgba(255, 23, 68, 0.40);
+}

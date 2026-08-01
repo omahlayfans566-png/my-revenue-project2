@@ -6,7 +6,7 @@
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  padding: 4px clamp(18px, 5vw, 72px) 2px;
+  padding: clamp(48px, 7vw, 80px) clamp(18px, 5vw, 72px) clamp(32px, 4vw, 56px);
   background:
     radial-gradient(circle at 12% 12%, rgba(255, 64, 129, 0.18), transparent 30%),
     radial-gradient(circle at 88% 18%, rgba(255, 183, 206, 0.28), transparent 32%),
@@ -272,7 +272,7 @@
    ═══════════════════════════════════════════════════════════ */
 .hero-visual {
   position: relative;
-  min-height: clamp(360px, 40vw, 500px);
+  min-height: clamp(420px, 46vw, 540px);
   animation: hero-visual-in 0.8s 0.12s ease both;
 }
 
@@ -320,13 +320,14 @@
 .hero-card-match {
   top: 4%;
   left: 50%;
-  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
   width: 210px;
   text-align: center;
+  /* Use margin trick so float animation doesn't fight translateX(-50%) */
+  margin-left: -105px;
   animation: hero-float-a 4.8s ease-in-out infinite;
 }
 
@@ -449,7 +450,7 @@
 /* Verified profile */
 .hero-card-profile {
   left: 0%;
-  top: 35%;
+  top: 38%;
   width: 188px;
   display: flex;
   flex-direction: column;
@@ -567,7 +568,7 @@
 /* Like notification */
 .hero-card-like {
   left: 6%;
-  bottom: 8%;
+  bottom: 4%;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -665,7 +666,7 @@
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   width: min(1080px, calc(100% - 36px));
-  margin: 16px auto 0;
+  margin: clamp(24px, 3vw, 40px) auto 0;
   padding: 10px;
   border: 1px solid rgba(255, 255, 255, 0.78);
   border-radius: 28px;
@@ -749,13 +750,13 @@
     order: -1;
     width: min(580px, 100%);
     margin: 0 auto;
-    min-height: 320px;
+    min-height: 360px;
   }
 }
 
 @media (max-width: 820px) {
   .hero-section {
-    padding: 4px 14px 0;
+    padding: clamp(36px, 6vw, 56px) 14px clamp(24px, 3vw, 40px);
   }
 
   .hero-title {
@@ -764,7 +765,7 @@
   }
 
   .hero-visual {
-    min-height: 280px;
+    min-height: 310px;
   }
 
   .hero-stats {
@@ -795,7 +796,7 @@
 
   .hero-card-like {
     left: 4%;
-    bottom: 4%;
+    bottom: 2%;
   }
 }
 
@@ -819,7 +820,7 @@
   }
 
   .hero-visual {
-    min-height: 260px;
+    min-height: 280px;
   }
 
   .hero-stats {
@@ -846,6 +847,7 @@
 
   .hero-card-match {
     width: 190px;
+    margin-left: -95px;
   }
 
   .hero-card-online {
@@ -867,11 +869,12 @@
   }
 
   .hero-visual {
-    min-height: 230px;
+    min-height: 250px;
   }
 
   .hero-card-match {
     width: 175px;
+    margin-left: -87px;
   }
 
   .hero-card-like {
