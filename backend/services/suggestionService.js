@@ -212,7 +212,7 @@ export const invalidateUserSuggestionsCache = (userId) => {
 
 // ── Broadcast to all connected clients that suggestions may have changed ───────
 export const broadcastSuggestionsUpdate = (eventType = "suggestions_updated") => {
-    if (global.io) {
+    if (global.io && typeof global.io.emit === "function") {
         global.io.emit(eventType, {
             timestamp: new Date().toISOString(),
             type: eventType,

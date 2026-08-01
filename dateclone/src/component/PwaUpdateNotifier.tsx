@@ -7,28 +7,45 @@ export default function PwaUpdateNotifier() {
 
   useEffect(() => {
     // Check if there's a waiting service worker
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.ready.then((reg) => {
+    if (!("serviceWorker" in navigator)) return;
+
+    let mounted = true;
+
+    navigator.serviceWorker.ready
+      .then((reg) => {
+        if (!mounted) return;
         if (reg.waiting) {
           setWaitingWorker(reg.waiting);
           setShowUpdate(true);
         }
+      })
+      .catch(() => {
+        // No SW registered or error - silently ignore
       });
 
-      // Listen for updates
-      const handleUpdateFound = () => {
-        navigator.serviceWorker.ready.then((reg) => {
+    // Listen for updates
+    const handleUpdateFound = () => {
+      navigator.serviceWorker.ready
+        .then((reg) => {
+          if (!mounted) return;
           if (reg.waiting) {
             setWaitingWorker(reg.waiting);
             setShowUpdate(true);
           }
-        });
-      };
+        })
+        .catch(() => {});
+    };
 
-      navigator.serviceWorker.addEventListener("controllerchange", () => {
-        window.location.reload();
-      });
-    }
+    const handleControllerChange = () => {
+      window.location.reload();
+    };
+
+    navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange);
+
+    return () => {
+      mounted = false;
+      navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange);
+    };
   }, []);
 
   const handleUpdate = useCallback(() => {

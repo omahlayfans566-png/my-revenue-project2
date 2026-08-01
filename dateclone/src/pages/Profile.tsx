@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 import AppNavbar from "../component/AppNavbar";
 import { useAuth } from "../context/AuthContext";
 import PremiumBadge from "../component/PremiumBadge";
@@ -69,6 +70,17 @@ const formatDate = (dateStr?: string): string => {
     month: "long",
     day: "numeric",
   });
+};
+
+const validateImageFile = (file: File): string | null => {
+  const allowed = ["image/jpeg", "image/png", "image/webp"];
+  if (!allowed.includes(file.type)) {
+    return "Only JPG, PNG, and WEBP images are allowed.";
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    return "Image must be under 5MB.";
+  }
+  return null;
 };
 
 const DETAIL_FIELDS: DetailField[] = [
@@ -218,14 +230,9 @@ const Profile = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate
-    const allowed = ["image/jpeg", "image/png", "image/webp"];
-    if (!allowed.includes(file.type)) {
-      alert("Only JPG, PNG, and WEBP images are allowed.");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Image must be under 5MB.");
+    const validationError = validateImageFile(file);
+    if (validationError) {
+      toast.error(validationError);
       return;
     }
 
@@ -259,6 +266,7 @@ const Profile = () => {
       reader.readAsDataURL(file);
     } catch (err) {
       console.error("Cover upload failed:", err);
+      toast.error("We couldn't upload your cover photo right now. Please try again shortly.");
       setUploadingCover(false);
       setCoverUploadProgress(0);
     }
@@ -274,6 +282,7 @@ const Profile = () => {
       updateLocalUser({ coverPhoto: "" });
     } catch (err) {
       console.error("Failed to remove cover:", err);
+      toast.error("We couldn't remove the cover photo right now. Please try again shortly.");
     }
   };
 
@@ -282,13 +291,9 @@ const Profile = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const allowed = ["image/jpeg", "image/png", "image/webp"];
-    if (!allowed.includes(file.type)) {
-      alert("Only JPG, PNG, and WEBP images are allowed.");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Image must be under 5MB.");
+    const validationError = validateImageFile(file);
+    if (validationError) {
+      toast.error(validationError);
       return;
     }
 
@@ -304,6 +309,7 @@ const Profile = () => {
       reader.readAsDataURL(file);
     } catch (err) {
       console.error("Avatar upload failed:", err);
+      toast.error("We couldn't upload your profile photo right now. Please try again shortly.");
     }
 
     e.target.value = "";
@@ -314,13 +320,9 @@ const Profile = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const allowed = ["image/jpeg", "image/png", "image/webp"];
-    if (!allowed.includes(file.type)) {
-      alert("Only JPG, PNG, and WEBP images are allowed.");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Image must be under 5MB.");
+    const validationError = validateImageFile(file);
+    if (validationError) {
+      toast.error(validationError);
       return;
     }
 
@@ -343,6 +345,7 @@ const Profile = () => {
       reader.readAsDataURL(file);
     } catch (err) {
       console.error("Photo upload failed:", err);
+      toast.error("We couldn't add that photo right now. Please try again shortly.");
       setUploadingPhoto(false);
     }
 
@@ -359,6 +362,7 @@ const Profile = () => {
       setPhotoViewerOpen(false);
     } catch (err) {
       console.error("Failed to delete photo:", err);
+      toast.error("We couldn't delete that photo right now. Please try again shortly.");
     }
   };
 

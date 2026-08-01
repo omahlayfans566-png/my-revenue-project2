@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
 import AppNavbar from "../component/AppNavbar";
 import { useAuth } from "../context/AuthContext";
-import { premiumAPI } from "../services/apiService";
+import { premiumAPI, getFriendlyErrorMessage } from "../services/apiService";
 import { PREMIUM_PLANS, YEARLY_PLANS, type PremiumPlan, initializePaystackPayment, PAYSTACK_PUBLIC_KEY } from "../services/premiumService";
 import "../style/premium.css";
 
@@ -101,7 +101,7 @@ const Premium = () => {
                             loadAnalytics();
                         }
                     } catch (err: any) {
-                        toast.error(err.message || "Verification failed. Contact support.");
+                        toast.error(getFriendlyErrorMessage(err, "Verification failed. Please try again shortly."));
                     }
                     setLoading(false);
                 },
@@ -112,7 +112,7 @@ const Premium = () => {
                 },
             });
         } catch (err: any) {
-            toast.error(err.message || "Failed to initialize payment");
+            toast.error(getFriendlyErrorMessage(err, "We couldn't start the payment right now. Please try again shortly."));
             sessionStorage.removeItem("pending_payment");
             setLoading(false);
         }
@@ -126,7 +126,7 @@ const Premium = () => {
             toast.success(res.message);
             loadStatus();
         } catch (err: any) {
-            toast.error(err.message || "Failed to cancel");
+            toast.error(getFriendlyErrorMessage(err, "We couldn't cancel right now. Please try again shortly."));
         } finally {
             setLoading(false);
         }
@@ -139,7 +139,7 @@ const Premium = () => {
             toast.success(res.message);
             loadStatus();
         } catch (err: any) {
-            toast.error(err.message || "Failed to reactivate");
+            toast.error(getFriendlyErrorMessage(err, "We couldn't reactivate right now. Please try again shortly."));
         } finally {
             setLoading(false);
         }
@@ -152,7 +152,7 @@ const Premium = () => {
             toast.success(res.message);
             loadBoostStatus();
         } catch (err: any) {
-            toast.error(err.message || "Failed to boost profile");
+            toast.error(getFriendlyErrorMessage(err, "We couldn't boost your profile right now. Please try again shortly."));
         } finally {
             setBoosting(false);
         }
@@ -174,7 +174,7 @@ const Premium = () => {
             loadStatus();
             loadAnalytics();
         } catch (err: any) {
-            toast.error(err.message || "Refund failed");
+            toast.error(getFriendlyErrorMessage(err, "We couldn't submit the refund request right now. Please try again shortly."));
         } finally {
             setLoading(false);
         }

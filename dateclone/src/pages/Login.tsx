@@ -22,7 +22,7 @@ const classify = (msg: string): { type: string; text: string } => {
   ) {
     return {
       type: "network",
-      text: "Backend server is not running. Open a terminal in the /backend folder and run: npm run dev",
+      text: "We're having trouble connecting right now. Please try again in a moment.",
     };
   }
 
@@ -128,7 +128,7 @@ const Login = () => {
       await authAPI.resendVerification(email.trim());
       setResendMsg("✓ New verification code sent! Check your email inbox.");
     } catch (err: any) {
-      setResendMsg(err.message || "Failed to resend. Try again.");
+      setResendMsg("We couldn't resend the code right now. Please try again shortly.");
     } finally {
       setResending(false);
     }

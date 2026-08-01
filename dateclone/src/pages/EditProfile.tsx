@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import AppNavbar from "../component/AppNavbar";
-import { profileAPI } from "../services/apiService";
+import { profileAPI, getFriendlyErrorMessage } from "../services/apiService";
 import { useAuth } from "../context/AuthContext";
 import "../style/editProfile.css";
 
@@ -147,7 +147,7 @@ const EditProfile = () => {
             setSuccess("Profile updated successfully! ✓");
             setTimeout(() => navigate("/profile"), 1500);
         } catch (err: any) {
-            setError(err.message || "Update failed. Please try again.");
+            setError(getFriendlyErrorMessage(err, "Update failed. Please try again shortly."));
         } finally {
             setLoading(false);
         }

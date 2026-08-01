@@ -39,6 +39,55 @@ const pendingRequests = new Map<string, Promise<any>>();
 // Helper to get auth token (internal use only)
 const _getToken = (): string | null => sessionStorage.getItem("authToken");
 
+const isProbablyTechnicalError = (message: string) => {
+    const m = message.toLowerCase();
+    return [
+        "backend server is not running",
+        "open a terminal",
+        "cannot reach the server",
+        "failed to fetch",
+        "networkerror",
+        "network error",
+        "load failed",
+        "stack trace",
+        "internal server",
+        "ecconnreset",
+        "econnrefused",
+        "enotfound",
+        "eaddrinuse",
+    ].some((token) => m.includes(token));
+};
+
+export const getFriendlyErrorMessage = (error: unknown, fallback = "Something went wrong. Please try again shortly.") => {
+    const raw = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+    const message = raw.trim();
+    const lower = message.toLowerCase();
+
+    if (!message) return fallback;
+
+    if (isProbablyTechnicalError(message)) {
+        return "We're having trouble connecting right now. Please try again in a moment.";
+    }
+
+    const safePatterns: Array<{ test: RegExp; text: string }> = [
+        { test: /invalid|required|missing|already taken|already registered|already liked|limit/i, text: message },
+        { test: /temporarily unavailable|try again later|please try again|timeout|timed out/i, text: message },
+        { test: /verify|unverified|locked|banned|suspended|premium|subscription/i, text: message },
+    ];
+
+    for (const pattern of safePatterns) {
+        if (pattern.test.test(lower)) {
+            return message;
+        }
+    }
+
+    if (message.length <= 120 && !message.startsWith("{") && !message.includes("Error:")) {
+        return message;
+    }
+
+    return fallback;
+};
+
 // Helper function for API requests with auth
 const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any> => {
     const headers: Record<string, string> = {
@@ -52,7 +101,7 @@ const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any
     // Deduplicate concurrent GET requests to the same endpoint
     const cacheKey = getCacheKey(endpoint, options);
     const method = (options.method || 'GET').toUpperCase();
-    
+
     if (method === 'GET') {
         const cached = getCachedResponse(cacheKey);
         if (cached) return cached;
@@ -67,10 +116,7 @@ const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any
         try {
             response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
         } catch {
-            throw new Error(
-                "Cannot reach the server. Make sure the backend is running " +
-                "(open a terminal in /backend and run: npm run dev)."
-            );
+            throw new Error("We're having trouble connecting right now. Please try again in a moment.");
         }
 
         let body: any = {};
@@ -90,7 +136,7 @@ const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any
         }
 
         if (!response.ok) {
-            const friendlyError = body?.message || "We couldn't complete your request. Please try again.";
+            const friendlyError = getFriendlyErrorMessage(body?.message || "", "We couldn't complete your request. Please try again shortly.");
             throw new Error(friendlyError);
         }
 

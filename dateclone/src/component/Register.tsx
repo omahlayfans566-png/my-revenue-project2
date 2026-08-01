@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { authAPI, setAuthToken, saveUserToLocal } from "../services/apiService";
+import { authAPI, setAuthToken, saveUserToLocal, getFriendlyErrorMessage } from "../services/apiService";
 
 // ─── African countries ────────────────────────────────────────────────────────
 const AFRICAN_COUNTRIES = [
@@ -268,14 +268,7 @@ const Register = () => {
                 setStep(7);
                 window.scrollTo(0, 0);
             } catch (err: any) {
-                const msg = (err.message || "").toLowerCase();
-                if (msg.includes("cannot reach") || msg.includes("failed to fetch")) {
-                    setSubmitErr("⚠️ Backend server is not running. Open a terminal in /backend and run: npm run dev");
-                } else if (msg.includes("already registered") || msg.includes("already taken")) {
-                    setSubmitErr(err.message);
-                } else {
-                    setSubmitErr(err.message || "Registration failed. Please try again.");
-                }
+                setSubmitErr(getFriendlyErrorMessage(err, "Registration failed. Please try again shortly."));
             } finally {
                 setSubmitting(false);
             }
@@ -686,7 +679,7 @@ const S7 = ({ fd, navigate }: any) => {
             setTimeout(() => navigate("/discover", { replace: true }), 1800);
         } catch (err: any) {
             setStatus("error");
-            setMsg(err.message || "Invalid code. Please try again.");
+            setMsg(getFriendlyErrorMessage(err, "Invalid code. Please try again."));
         }
     };
 
@@ -695,7 +688,7 @@ const S7 = ({ fd, navigate }: any) => {
             await authAPI.resendVerification(fd.email);
             setCooldown(60); setStatus("idle"); setMsg("New code sent!");
             setOtp(["", "", "", "", "", ""]); refs.current[0]?.focus();
-        } catch (err: any) { setMsg(err.message || "Failed to resend."); }
+        } catch (err: any) { setMsg(getFriendlyErrorMessage(err, "We couldn't resend the code right now. Please try again shortly.")); }
     };
 
     return (

@@ -54,8 +54,8 @@ const Navbar = () => {
       </ul>
 
       <div className="navbar-buttons">
-        <Link to="/login" className="navbar-btn navbar-btn-login">Log In</Link>
-        <Link to="/register" className="navbar-btn navbar-btn-signup">Sign Up Free</Link>
+        <Link to="/login" className="navbar-btn navbar-btn-login">Login</Link>
+        <Link to="/register" className="navbar-btn navbar-btn-signup">Sign Up</Link>
       </div>
 
       <button
@@ -79,8 +79,8 @@ const Navbar = () => {
           </Link>
         ))}
         <div className="navbar-mobile-divider" />
-        <Link to="/login" className="navbar-btn navbar-btn-login" onClick={close}>Log In</Link>
-        <Link to="/register" className="navbar-btn navbar-btn-signup" onClick={close}>Sign Up Free</Link>
+        <Link to="/login" className="navbar-btn navbar-btn-login" onClick={close}>Login</Link>
+        <Link to="/register" className="navbar-btn navbar-btn-signup" onClick={close}>Sign Up</Link>
       </div>
     </nav>
   );

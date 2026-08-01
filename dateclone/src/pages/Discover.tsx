@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
 import AppNavbar from "../component/AppNavbar";
-import { discoveryAPI, matchAPI } from "../services/apiService";
+import { discoveryAPI, matchAPI, getFriendlyErrorMessage } from "../services/apiService";
 import { useSocket } from "../context/SocketContext";
 import "../style/discover.css";
 
@@ -399,6 +399,7 @@ const Discover = () => {
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [loadError, setLoadError] = useState("");
     const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
     const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -419,6 +420,7 @@ const Discover = () => {
     const loadProfiles = useCallback(async (pageNum: number = 1, append: boolean = false) => {
         if (pageNum === 1) setLoading(true);
         else setLoadingMore(true);
+        if (pageNum === 1) setLoadError("");
         try {
             const f: Record<string, any> = { page: pageNum, limit: 20 };
             Object.entries(activeFilters).forEach(([k, v]) => {
@@ -432,9 +434,12 @@ const Discover = () => {
             } else {
                 setProfiles(users);
             }
+            setLoadError("");
             setHasMore(users.length >= 20 && res.pagination?.page < res.pagination?.pages);
-        } catch {
-            if (!append) setProfiles([]);
+        } catch (err: any) {
+            if (!append) {
+                setLoadError(getFriendlyErrorMessage(err, "We're having trouble loading profiles right now. Please try again shortly."));
+            }
         } finally {
             setLoading(false);
             setLoadingMore(false);
@@ -483,7 +488,7 @@ const Discover = () => {
             // Remove from grid
             setProfiles(prev => prev.filter(p => p._id !== profile._id));
         } catch (err: any) {
-            const msg = err?.message || "Something went wrong";
+            const msg = getFriendlyErrorMessage(err, "We couldn't complete that action right now. Please try again shortly.");
             if (msg.toLowerCase().includes("limit") || msg.toLowerCase().includes("429")) {
                 toast("❤️ Daily like limit reached. Upgrade to Premium for unlimited likes!", {
                     duration: 5000,
@@ -505,7 +510,7 @@ const Discover = () => {
             // Remove from grid
             setProfiles(prev => prev.filter(p => p._id !== profile._id));
         } catch (err: any) {
-            toast.error(err?.message || "Something went wrong");
+            toast.error(getFriendlyErrorMessage(err, "We couldn't skip this profile right now. Please try again shortly."));
         } finally {
             setAL(null);
         }
@@ -629,6 +634,22 @@ const Discover = () => {
                                 <ProfileCardSkeleton key={i} />
                             ))}
                         </div>
+                    ) : loadError ? (
+                        <motion.div
+                            className="empty-state discover-empty"
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.5 }}
+                        >
+                            <div className="empty-icon">🌐</div>
+                            <h3>We’re having trouble loading profiles</h3>
+                            <p>Please try again in a moment.</p>
+                            <div className="empty-actions">
+                                <button className="btn btn-primary" onClick={() => { setPage(1); loadProfiles(1); }}>
+                                    Retry
+                                </button>
+                            </div>
+                        </motion.div>
                     ) : profiles.length === 0 ? (
                         <motion.div
                             className="empty-state discover-empty"
@@ -648,6 +669,7 @@ const Discover = () => {
                                     <button className="btn btn-primary" onClick={() => {
                                         setActiveFilters(DEFAULT_FILTERS);
                                         setFilters(DEFAULT_FILTERS);
+                                        setLoadError("");
                                     }}>
                                         Clear Filters
                                     </button>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 import AppNavbar from "../component/AppNavbar";
 import { useAuth } from "../context/AuthContext";
 import "../style/settings.css";
@@ -23,7 +24,7 @@ const Settings = () => {
 
     const handleDelete = () => {
         if (confirm("Are you sure you want to delete your account? This cannot be undone.")) {
-            alert("Account deletion would be processed here. Contact support for now.");
+            toast.error("Account deletion is not available here yet. Please contact support.");
         }
     };
 

@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion, useMotionValue, useTransform, AnimatePresence } from "framer-motion";
 import type { PanInfo } from "framer-motion";
+import toast from "react-hot-toast";
 import AppNavbar from "../component/AppNavbar";
 import { useAuth } from "../context/AuthContext";
 import { useSocket } from "../context/SocketContext";
-import { matchAPI, messageAPI, notificationAPI } from "../services/apiService";
+import { matchAPI, messageAPI, notificationAPI, getFriendlyErrorMessage } from "../services/apiService";
 import "../style/dashboard.css";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -306,14 +307,14 @@ const Dashboard = () => {
             setSuggestions(prev => prev.filter(s => s._id !== uid));
         } catch (err: any) {
             console.error("[Dashboard Like] Error:", err);
-            const message = err?.message || "Failed to like user";
+            const message = getFriendlyErrorMessage(err, "We couldn't like this profile right now. Please try again shortly.");
             if (message.includes("already liked") || message.includes("Already liked")) {
                 setLikedIds(prev => new Set([...prev, uid]));
                 setSuggestions(prev => prev.filter(s => s._id !== uid));
             } else if (message.includes("yourself")) {
-                alert("You cannot like yourself!");
+                toast.error("You cannot like yourself.");
             } else {
-                alert(message);
+                toast.error(message);
             }
         }
         finally {
@@ -345,7 +346,7 @@ const Dashboard = () => {
             setSuggestions(prev => prev.filter(s => s._id !== uid));
         } catch (err: any) {
             console.error("[Dashboard SuperLike] Error:", err);
-            alert(err?.message || "Failed to super like");
+            toast.error(getFriendlyErrorMessage(err, "We couldn't super like this profile right now. Please try again shortly."));
         }
         finally {
             setLiking(null);

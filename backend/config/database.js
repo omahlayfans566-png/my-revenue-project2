@@ -129,6 +129,27 @@ export const ensureIndexes = async () => {
         const collections = await db.listCollections().toArray();
         const collectionNames = collections.map(c => c.name);
 
+        if (collectionNames.includes('matches')) {
+            const matchesCollection = db.collection('matches');
+            const indexes = await matchesCollection.indexes();
+            const staleIndexNames = [
+                'user1_1_user2_1',
+                'user1_1',
+                'user2_1',
+                'isMatch_1',
+                'users_1',
+                'isMatch_1_matchedAt_-1',
+                'user1_1_isMatch_1',
+                'user2_1_isMatch_1',
+            ];
+
+            for (const indexName of staleIndexNames) {
+                if (indexes.some(idx => idx.name === indexName)) {
+                    await matchesCollection.dropIndex(indexName).catch(() => { });
+                }
+            }
+        }
+
         // Message indexes
         if (collectionNames.includes('messages')) {
             await db.collection('messages').createIndexes([

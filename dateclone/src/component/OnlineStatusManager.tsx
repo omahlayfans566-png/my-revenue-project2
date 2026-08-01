@@ -28,7 +28,6 @@ export default function OnlineStatusManager() {
   }, []);
 
   if (!showBanner) return null;
-  if (isOnline && !showBanner) return null;
 
   return (
     <div className={`online-status-banner ${isOnline ? "online" : "offline"}`} role="status">

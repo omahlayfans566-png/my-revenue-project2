@@ -4,6 +4,7 @@
  */
 import mongoose from "mongoose";
 import "dotenv/config";
+import { ensureIndexes } from "../../config/database.js";
 
 const TEST_DB_PREFIX = "jest_test_";
 
@@ -13,6 +14,7 @@ export async function connectTestDB() {
         serverSelectionTimeoutMS: 20000,
         connectTimeoutMS: 20000,
     });
+    await ensureIndexes();
 }
 
 export async function closeTestDB() {

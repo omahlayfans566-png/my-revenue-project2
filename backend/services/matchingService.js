@@ -85,7 +85,18 @@ export const calculateCompatibility = (user1, user2) => {
         }
     }
 
-    return { score: Math.min(100, score), reasons };
+    const result = {
+        score: Math.min(100, score),
+        reasons,
+        valueOf() {
+            return this.score;
+        },
+        toString() {
+            return String(this.score);
+        },
+    };
+
+    return result;
 };
 
 // ─── Get Daily Recommendations ────────────────────────────────────────────────

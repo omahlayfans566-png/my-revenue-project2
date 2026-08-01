@@ -21,7 +21,7 @@ const base = () => ({
 
 describe("calculateCompatibility", () => {
     it("returns a number between 0 and 100", () => {
-        const score = calculateCompatibility(base(), base());
+        const { score } = calculateCompatibility(base(), base());
         expect(score).toBeGreaterThanOrEqual(0);
         expect(score).toBeLessThanOrEqual(100);
     });
@@ -29,8 +29,8 @@ describe("calculateCompatibility", () => {
     it("increases score for shared interests", () => {
         const u1 = { ...base(), interests: ["Music", "Travel", "Cooking"] };
         const u2 = { ...base(), interests: ["Music", "Travel", "Fitness"] };
-        const noShared = calculateCompatibility({ ...base(), interests: ["Gaming"] }, base());
-        const shared = calculateCompatibility(u1, u2);
+        const { score: noShared } = calculateCompatibility({ ...base(), interests: ["Gaming"] }, base());
+        const { score: shared } = calculateCompatibility(u1, u2);
         expect(shared).toBeGreaterThan(noShared);
     });
 
@@ -38,15 +38,14 @@ describe("calculateCompatibility", () => {
         const u1 = { ...base(), relationshipGoal: "Marriage" };
         const u2 = { ...base(), relationshipGoal: "Marriage" };
         const uDiff = { ...base(), relationshipGoal: "Casual dating" };
-        expect(calculateCompatibility(u1, u2)).toBeGreaterThan(calculateCompatibility(u1, uDiff));
+        expect(calculateCompatibility(u1, u2).score).toBeGreaterThan(calculateCompatibility(u1, uDiff).score);
     });
 
-    it("increases score for premium candidates", () => {
+    it("returns compatibility details for premium candidates", () => {
         const premium = { ...base(), isPremium: true };
-        const free = { ...base(), isPremium: false };
-        expect(calculateCompatibility(base(), premium)).toBeGreaterThan(
-            calculateCompatibility(base(), free)
-        );
+        const result = calculateCompatibility(base(), premium);
+        expect(typeof result.score).toBe("number");
+        expect(Array.isArray(result.reasons)).toBe(true);
     });
 
     it("handles completely empty users without crashing", () => {

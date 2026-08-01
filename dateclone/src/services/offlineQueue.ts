@@ -146,9 +146,13 @@ export function registerOfflineSync(): () => void {
   const handleOnline = async () => {
     const count = getQueueCount();
     if (count > 0) {
-      console.log(`[OfflineQueue] Back online - processing ${count} queued actions`);
+      if (import.meta.env.DEV) {
+        console.info(`[OfflineQueue] Back online - processing ${count} queued actions`);
+      }
       const result = await processQueue();
-      console.log(`[OfflineQueue] Processed: ${result.success} succeeded, ${result.failed} failed`);
+      if (import.meta.env.DEV) {
+        console.info(`[OfflineQueue] Processed: ${result.success} succeeded, ${result.failed} failed`);
+      }
     }
   };
 

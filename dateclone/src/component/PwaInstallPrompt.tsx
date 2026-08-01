@@ -208,14 +208,17 @@ export default function PwaInstallPrompt() {
 
   // ─── Install handler ───────────────────────────────────────────────────────
   const handleInstall = useCallback(async () => {
-    if (!deferredPrompt) {
+    let promptToUse = deferredPrompt;
+
+    if (!promptToUse) {
       // Try to recover one more time
       if (window.__deferredPrompt) {
-        setDeferredPrompt(window.__deferredPrompt);
+        promptToUse = window.__deferredPrompt;
+        setDeferredPrompt(promptToUse);
         window.__deferredPrompt = null;
       }
       // If still null and browser supports it, show banner again
-      if (!window.__deferredPrompt && !isIOS) {
+      if (!promptToUse && !isIOS) {
         toast("Open browser menu and tap 'Install' or 'Add to Home Screen'", {
           icon: "ℹ️",
           duration: 5000,
@@ -223,7 +226,7 @@ export default function PwaInstallPrompt() {
         return;
       }
     }
-    const promptToUse = deferredPrompt || window.__deferredPrompt;
+
     if (!promptToUse) return;
     try {
       await promptToUse.prompt();
@@ -404,19 +407,19 @@ export default function PwaInstallPrompt() {
               <ol className="pwa-ios-steps">
                 <li>
                   <span className="pwa-ios-step-icon">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M12 6v.01M12 18v.01M6 12h.01M18 12h.01"/></svg>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="12" cy="12" r="2" /><path d="M12 6v.01M12 18v.01M6 12h.01M18 12h.01" /></svg>
                   </span>
                   <div>
                     Tap the <strong>Share</strong> button{" "}
                     <span className="pwa-ios-share-icon">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#007aff" strokeWidth="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#007aff" strokeWidth="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" /></svg>
                     </span>{" "}
                     in Safari
                   </div>
                 </li>
                 <li>
                   <span className="pwa-ios-step-icon">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 21V9" /></svg>
                   </span>
                   <div>
                     Scroll down and tap <strong>Add to Home Screen</strong>
@@ -424,7 +427,7 @@ export default function PwaInstallPrompt() {
                 </li>
                 <li>
                   <span className="pwa-ios-step-icon">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14" /><path d="M12 5l7 7-7 7" /></svg>
                   </span>
                   <div>
                     Tap <strong>Add</strong> in the top-right corner

@@ -707,6 +707,13 @@
   color: var(--profile-primary);
 }
 
+.profile-gallery-uploading {
+  opacity: 0.6;
+  cursor: not-allowed;
+  border-color: var(--profile-primary);
+  background: rgba(255, 46, 121, 0.08);
+}
+
 /* ── Premium Banner ──────────────────────────────────────────────────────── */
 .profile-premium-banner {
   margin: 0 16px 20px;
