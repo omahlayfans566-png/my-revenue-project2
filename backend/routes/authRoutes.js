@@ -21,6 +21,7 @@ import {
     send2FACode,
 } from "../services/emailService.js";
 import { onboardMember } from "../services/onboardingService.js";
+import { notifySuggestionsChanged } from "../services/suggestionService.js";
 
 
 const router = express.Router();
@@ -403,10 +404,9 @@ router.post(
             // Log activity
             await logActivity(newUser._id, "register", "Account created", req);
 
-            // Notify suggestions
+            // Refresh suggestion cache now that a new profile exists.
             try {
-                const { emitUserRegistered } = await import("../server.js");
-                emitUserRegistered(newUser._id.toString());
+                notifySuggestionsChanged();
             } catch (e) { /* silent */ }
 
             // Send verification email in background
@@ -606,7 +606,7 @@ router.post(
 
             const user = await User.findOne({ email });
             if (!user) {
-                await logLoginHistory(null, false, req, "No account found");
+                logLoginHistory(null, false, req, "No account found");
                 return res.status(401).json({
                     success: false,
                     message: "No account found with that email.",
@@ -616,7 +616,7 @@ router.post(
             // Check account lockout
             const lockStatus = isAccountLocked(user);
             if (lockStatus.locked) {
-                await logLoginHistory(user._id, false, req, "Account locked");
+                logLoginHistory(user._id, false, req, "Account locked");
                 return res.status(429).json({
                     success: false,
                     message: `Account temporarily locked. Try again in ${lockStatus.remainingMinutes} minutes.`,
@@ -626,7 +626,7 @@ router.post(
             }
 
             if (user.isBanned) {
-                await logLoginHistory(user._id, false, req, "Account banned");
+                logLoginHistory(user._id, false, req, "Account banned");
                 return res.status(403).json({
                     success: false,
                     message: "Account suspended. Contact support.",
@@ -636,7 +636,7 @@ router.post(
             const valid = await bcrypt.compare(password, user.password);
             if (!valid) {
                 await handleFailedLogin(user);
-                await logLoginHistory(user._id, false, req, "Incorrect password");
+                logLoginHistory(user._id, false, req, "Incorrect password");
                 return res.status(401).json({
                     success: false,
                     message: "Incorrect password. Please try again.",
@@ -664,31 +664,31 @@ router.post(
                 lastActive: new Date(),
             });
 
-            await user.save();
-
-            // Check if 2FA is enabled
+            // Check if 2FA is enabled — must save before responding
             if (user.twoFactorEnabled) {
-                // Generate and send 2FA OTP
                 const twoFactorOtp = generateOtp();
                 const hashed2FAOtp = hashOtpFast(twoFactorOtp);
 
-                await Otp.create({
-                    userId: user._id,
-                    email: user.email,
-                    otp: hashed2FAOtp,
-                    hashType: "hmac",
-                    expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 min expiry
-                    used: false,
-                    purpose: "2fa",
-                });
+                // Save user & OTP in parallel for speed
+                await Promise.all([
+                    user.save(),
+                    Otp.create({
+                        userId: user._id,
+                        email: user.email,
+                        otp: hashed2FAOtp,
+                        hashType: "hmac",
+                        expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+                        used: false,
+                        purpose: "2fa",
+                    }),
+                ]);
 
-                // Send 2FA code via email
+                // Fire-and-forget: email + logging don't block the response
                 send2FACode(user.email, twoFactorOtp).catch(err => {
                     console.error("[2FA] Email failed:", err.message);
                 });
-
-                await logLoginHistory(user._id, true, req, "", "password", refreshToken);
-                await logActivity(user._id, "login", "2FA required", req);
+                logLoginHistory(user._id, true, req, "", "password", refreshToken);
+                logActivity(user._id, "login", "2FA required", req);
 
                 return res.json({
                     success: true,
@@ -699,16 +699,20 @@ router.post(
                 });
             }
 
-            await logLoginHistory(user._id, true, req, "", "password", refreshToken);
-            await logActivity(user._id, "login", "Login successful", req);
-
-            return res.json({
+            // ── Standard login: respond immediately, then save in background ──
+            const responsePayload = {
                 success: true,
                 message: "Login successful.",
                 token,
                 refreshToken,
                 user: publicUser(user),
-            });
+            };
+            res.json(responsePayload);
+
+            // Non-blocking: persist session data and logs after client gets the token
+            user.save().catch(err => console.error("[Login] Background save failed:", err.message));
+            logLoginHistory(user._id, true, req, "", "password", refreshToken);
+            logActivity(user._id, "login", "Login successful", req);
         } catch (err) {
             // Differentiate between error types for clearer user messages
             const isDbError =
@@ -720,17 +724,17 @@ router.post(
                 err?.message?.includes("timeout") ||
                 err?.name === "MongooseError" ||
                 err?.name === "DisconnectedError";
-            
+
             const isBcryptError = err?.message?.includes("bcrypt") || err?.name === "BcryptError";
-            
+
             console.error("[Login]", err);
-            
+
             if (isDbError) {
                 return res
                     .status(503)
                     .json({ success: false, message: "Server unavailable. Please try again later." });
             }
-            
+
             return res
                 .status(500)
                 .json({ success: false, message: "Login failed. Please try again." });

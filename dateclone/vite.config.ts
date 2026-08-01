@@ -16,6 +16,7 @@ export default defineConfig({
         name: 'DateClone',
         short_name: 'DateClone',
         description: 'Find your perfect match on DateClone - The premium dating experience',
+        id: '/',
         start_url: '/',
         display: 'standalone',
         orientation: 'portrait-primary',
@@ -31,6 +32,15 @@ export default defineConfig({
           { src: '/pwa-icons/icon-192-maskable.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
           { src: '/pwa-icons/icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
+        screenshots: [
+          {
+            src: '/pwa-icons/icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            form_factor: 'narrow',
+            label: 'DateClone – Find your match',
+          },
+        ],
         shortcuts: [
           { name: 'Discover', url: '/discover', description: 'Browse profiles' },
           { name: 'Matches', url: '/matches', description: 'View your matches' },
@@ -41,6 +51,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,jpg,jpeg,gif,webp,woff,woff2,ico}'],
+        navigateFallback: '/index.html',
         runtimeCaching: [
           {
             urlPattern: /^https?:\/\/.*\/api\/.*/i,

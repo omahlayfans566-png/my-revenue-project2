@@ -1,58 +1,56 @@
 import { Link } from "react-router-dom";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, memo } from "react";
 import "../style/hero.css";
 
 const FLOATING_HEARTS = [
-  { left: "10%", delay: "0s", duration: "8s", size: "1.2rem" },
-  { left: "25%", delay: "2.5s", duration: "10s", size: "0.9rem" },
-  { left: "40%", delay: "4.2s", duration: "7.5s", size: "1.1rem" },
-  { left: "55%", delay: "1.5s", duration: "9s", size: "0.8rem" },
-  { left: "70%", delay: "3.8s", duration: "8.5s", size: "1.3rem" },
-  { left: "85%", delay: "5.5s", duration: "7s", size: "1rem" },
+  { left: "6%", top: "22%", delay: "0s", dur: "6.5s", size: "16px" },
+  { left: "15%", top: "68%", delay: "1.6s", dur: "7.4s", size: "11px" },
+  { left: "48%", top: "14%", delay: "2.3s", dur: "8s", size: "14px" },
+  { left: "83%", top: "20%", delay: "0.9s", dur: "6.8s", size: "12px" },
+  { left: "93%", top: "62%", delay: "2.9s", dur: "7.8s", size: "18px" },
 ];
 
-const Hero = () => {
+const STATS = [
+  { icon: "👥", value: "2M+", label: "Active Members" },
+  { icon: "💍", value: "150K+", label: "Success Stories" },
+  { icon: "🌍", value: "25+", label: "Countries" },
+  { icon: "⭐", value: "4.9", label: "App Rating" },
+];
+
+const Hero = memo(() => {
   const statsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const el = statsRef.current;
+    if (!el) return;
     const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("hero-stats-visible");
-          }
-        });
-      },
-      { threshold: 0.3 }
+      ([entry]) => { if (entry.isIntersecting) el.classList.add("hero-stats-visible"); },
+      { threshold: 0.2 }
     );
-
-    if (statsRef.current) observer.observe(statsRef.current);
+    observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
   return (
     <section className="hero-section" aria-label="DateClone hero">
+      {/* Background glows */}
+      <div className="hero-glow hero-glow-a" aria-hidden="true" />
+      <div className="hero-glow hero-glow-b" aria-hidden="true" />
+      <div className="hero-glow hero-glow-c" aria-hidden="true" />
 
-      {/* Floating decorative hearts */}
+      {/* Floating hearts */}
       {FLOATING_HEARTS.map((h, i) => (
-        <span
-          key={i}
-          className="hero-float-heart"
-          aria-hidden="true"
-          style={{
-            left: h.left,
-            animationDelay: h.delay,
-            animationDuration: h.duration,
-            fontSize: h.size,
-          }}
-        >❤️</span>
+        <span key={i} className="hero-float-heart" aria-hidden="true"
+          style={{ left: h.left, top: h.top, animationDelay: h.delay, animationDuration: h.dur, fontSize: h.size }}>
+          ♥
+        </span>
       ))}
 
       <div className="hero-container">
-        {/* Left Column */}
+        {/* ── Left: Copy ── */}
         <div className="hero-content">
           <div className="hero-badge">
-            <span className="hero-badge-icon">💕</span>
+            <span className="hero-badge-dot" aria-hidden="true" />
             Africa's #1 Dating Platform
           </div>
 
@@ -63,92 +61,117 @@ const Hero = () => {
           </h1>
 
           <p className="hero-subtitle">
-            Meet genuine singles, build meaningful relationships, and discover love — right where you are.
+            Meet genuine singles, build meaningful connections, and discover
+            love — right where you are.
           </p>
 
           <div className="hero-buttons">
             <Link to="/register" className="hero-btn hero-btn-primary">
-              Start for Free
-              <span className="hero-btn-arrow">→</span>
+              Start for Free <span className="hero-btn-arrow" aria-hidden="true">→</span>
             </Link>
             <Link to="/about" className="hero-btn hero-btn-secondary">
+              <span className="hero-play-icon" aria-hidden="true">▶</span>
               How It Works
             </Link>
           </div>
 
-          {/* Trust indicators - floating stats card */}
-          <div className="hero-stats" ref={statsRef}>
-            <div className="hero-stat-item">
-              <span className="hero-stat-icon">👥</span>
-              <div className="hero-stat-info">
-                <span className="hero-stat-num">2M+</span>
-                <span className="hero-stat-label">Members</span>
-              </div>
+          {/* Trust strip */}
+          <div className="hero-trust" aria-label="Social proof">
+            <div className="hero-trust-avatars" aria-hidden="true">
+              {["💛", "💜", "❤️", "🧡"].map((e, i) => (
+                <span key={i} className="hero-trust-avatar">{e}</span>
+              ))}
             </div>
-            <div className="hero-stat-divider" aria-hidden="true" />
-            <div className="hero-stat-item">
-              <span className="hero-stat-icon">💍</span>
-              <div className="hero-stat-info">
-                <span className="hero-stat-num">150K+</span>
-                <span className="hero-stat-label">Success Stories</span>
-              </div>
-            </div>
-            <div className="hero-stat-divider" aria-hidden="true" />
-            <div className="hero-stat-item">
-              <span className="hero-stat-icon">🌍</span>
-              <div className="hero-stat-info">
-                <span className="hero-stat-num">25+</span>
-                <span className="hero-stat-label">Countries</span>
-              </div>
-            </div>
-            <div className="hero-stat-divider" aria-hidden="true" />
-            <div className="hero-stat-item">
-              <span className="hero-stat-icon">⭐</span>
-              <div className="hero-stat-info">
-                <span className="hero-stat-num">4.9★</span>
-                <span className="hero-stat-label">App Rating</span>
-              </div>
-            </div>
+            <p>Join <strong>2M+</strong> singles already finding love.</p>
           </div>
         </div>
 
-        {/* Right Column - Decorative artwork */}
-        <div className="hero-artwork" aria-hidden="true">
-          <div className="hero-artwork-bg">
-            <svg className="hero-artwork-svg" viewBox="0 0 400 500" fill="none" xmlns="http://www.w3.org/2000/svg">
-              {/* Decorative heart line path */}
-              <path
-                d="M200 60 C120 60 40 120 40 200 C40 300 120 340 200 420 C280 340 360 300 360 200 C360 120 280 60 200 60Z"
-                stroke="rgba(255,45,122,0.12)"
-                strokeWidth="2"
-                fill="none"
-              />
-              <path
-                d="M200 100 C140 100 80 145 80 210 C80 280 140 310 200 380 C260 310 320 280 320 210 C320 145 260 100 200 100Z"
-                stroke="rgba(255,45,122,0.08)"
-                strokeWidth="1.5"
-                fill="none"
-              />
-              {/* Floating small hearts on the right */}
-              <text x="300" y="150" fontSize="24" fill="rgba(255,45,122,0.15)">❤️</text>
-              <text x="330" y="280" fontSize="18" fill="rgba(255,45,122,0.1)">❤️</text>
-              <text x="280" y="350" fontSize="20" fill="rgba(255,45,122,0.12)">❤️</text>
-              <text x="340" y="200" fontSize="14" fill="rgba(255,45,122,0.08)">❤️</text>
-            </svg>
+        {/* ── Right: UI Composition ── */}
+        <div className="hero-visual" aria-hidden="true">
+          {/* Central glow orb */}
+          <div className="hero-orb" />
+
+          {/* Match card — top center */}
+          <div className="hero-card hero-card-match">
+            <div className="hero-card-avatars">
+              <span className="hero-av hero-av-a">👩🏾</span>
+              <span className="hero-match-heart-badge">♥</span>
+              <span className="hero-av hero-av-b">👨🏿</span>
+            </div>
+            <strong>It's a Match!</strong>
+            <span>Start a beautiful conversation ✨</span>
           </div>
 
-          {/* Floating feature card */}
-          <div className="hero-feature-card">
-            <div className="hero-feature-card-dot" />
-            <div className="hero-feature-card-content">
-              <span className="hero-feature-card-title">Smart Matching</span>
-              <span className="hero-feature-card-desc">AI-powered compatibility</span>
+          {/* Online users — top right */}
+          <div className="hero-card hero-card-online">
+            <div className="hero-online-row">
+              <span className="hero-online-dot" />
+              <strong>2,841 online</strong>
             </div>
+            <div className="hero-online-faces">
+              {["🙋🏾‍♀️", "🙋🏿‍♂️", "🙋🏽‍♀️"].map((e, i) => (
+                <span key={i} className="hero-online-face">{e}</span>
+              ))}
+              <span className="hero-online-more">+120</span>
+            </div>
+          </div>
+
+          {/* Verified profile — left */}
+          <div className="hero-card hero-card-profile">
+            <div className="hero-profile-top">
+              <span className="hero-profile-av">👩🏾‍💻</span>
+              <div>
+                <strong>Amara, 26</strong>
+                <span>Lagos, Nigeria</span>
+              </div>
+            </div>
+            <div className="hero-verified-badge">✓ Verified Profile</div>
+          </div>
+
+          {/* Match % — bottom right */}
+          <div className="hero-card hero-card-percent">
+            <div className="hero-percent-ring">
+              <svg viewBox="0 0 44 44" aria-hidden="true">
+                <circle cx="22" cy="22" r="18" className="hero-ring-bg" />
+                <circle cx="22" cy="22" r="18" className="hero-ring-fill" />
+              </svg>
+              <span className="hero-percent-num">94%</span>
+            </div>
+            <span>Match Score</span>
+          </div>
+
+          {/* Like notification — bottom left */}
+          <div className="hero-card hero-card-like">
+            <span className="hero-like-icon">💕</span>
+            <div>
+              <strong>Chidi liked you</strong>
+              <span>3 mins ago</span>
+            </div>
+          </div>
+
+          {/* Premium badge — center */}
+          <div className="hero-card hero-card-premium">
+            <span>👑</span>
+            <span>Premium Member</span>
           </div>
         </div>
       </div>
+
+      {/* Stats bar */}
+      <div className="hero-stats" ref={statsRef}>
+        {STATS.map((s) => (
+          <div className="hero-stat-item" key={s.label}>
+            <span className="hero-stat-emoji" aria-hidden="true">{s.icon}</span>
+            <div className="hero-stat-info">
+              <span className="hero-stat-num">{s.value}</span>
+              <span className="hero-stat-label">{s.label}</span>
+            </div>
+          </div>
+        ))}
+      </div>
     </section>
   );
-};
+});
 
+Hero.displayName = "Hero";
 export default Hero;
